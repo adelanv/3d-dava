@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "3D_DaVa"
+version = "0.0.1"
+authors = [
+  { name="Adela N. Videsjorden", email="adela.videsjorden@sintef.no" },
+]
+description = "Data validation on 3D Point Cloud models"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = ["numpy", "open3d"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+
+# "Homepage" = "https://github.com/pypa/sampleproject"
+# Add LICENCE
