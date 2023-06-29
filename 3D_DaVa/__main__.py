@@ -288,14 +288,17 @@ def process_with_reference(input_file:str, reference_file:str, *args):
 
 #____________________________________NR-PCQA____________________________________
 def nrpcqa_downsize(pcd, snapshotting = False, visualization = False):
-    """
-    TODO
-    """
+    '''
+        Downsize big models (over 0.5mil) to allow faster processing. Boundary box constraints are applied for adaptive voxel sizing.
+    Args:
+        pcd (type: PointCloud object) : point cloud to downsample
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
+    '''
     global nrpcqa_downsized
     global nrpcqa_voxel_size
     global nrpcqa_links
     global large
-    # We downsize big models (over 0.5mil) to allow faster processing
     if large:
         constraint = 0.0025
     else:
@@ -304,8 +307,8 @@ def nrpcqa_downsize(pcd, snapshotting = False, visualization = False):
     voxel_size = round(max(pcd.get_max_bound() - pcd.get_min_bound()) * constraint, 8)
     down, corr_inds = proc.downsample_and_trace_cloud(pcd, voxel_size)
     # REMOVE: Save links between voxels and within-voxel points:
-    # linked_inds = [[i, list(corr_inds[i])] for i in range(len(corr_inds))]
-    # linked_inds_dict = dict([(i, list(corr_inds[i])) for i in range(len(corr_inds))])
+    # REMOVE: linked_inds = [[i, list(corr_inds[i])] for i in range(len(corr_inds))]
+    # REMOVE: linked_inds_dict = dict([(i, list(corr_inds[i])) for i in range(len(corr_inds))])
     # Save for reference-processing:
     pcd_voxel_inds = range(len(corr_inds))
     pcd_actual_inds = [list(corr_inds[i]) for i in pcd_voxel_inds]
@@ -319,33 +322,26 @@ def nrpcqa_downsize(pcd, snapshotting = False, visualization = False):
     nrpcqa_downsized = down
     nrpcqa_voxel_size = voxel_size
     nrpcqa_links = pcd_links
-    # NUM_VOXELS = len(down.points)
+    # REMOVE: NUM_VOXELS = len(down.points)
+
 
 def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
-    """
-    TODO
-    """
+    '''
+        Turns a point cloud to a mesh by 3D-modelling voxels and clusters connected areas / finds low-connection areas to calculate metrics related to density.
+    Args:
+        pcd (type: PointCloud object) : point cloud to model
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
+
+    Returns:
+        (list) : metric list of tuples with format (METRIC_NAME, METRIC_SCORE)
+    '''
     global nrpcqa_voxel_size
     global nrpcqa_links
     global nrpcqa_downsized
     global nrpcqa_probs
-
-    # Reference: https://towardsdatascience.com/how-to-automate-voxel-modelling-of-3d-point-cloud-with-python-459f4d43a227
-    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size = nrpcqa_voxel_size)
-    voxels = voxel_grid.get_voxels()
-    # Create mesh by turning voxels into 3D cubes:
-    v_mesh = o3d.geometry.TriangleMesh()
-    for i in range(len(voxels)):
-        cube=o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-        cube.paint_uniform_color(voxels[i].color)
-        voxel_coord = voxels[i].grid_index
-        cube.translate(voxel_coord, relative=False)
-        v_mesh += cube
-    v_mesh.translate([0.5, 0.5, 0.5], relative=True)
-    v_mesh.scale(nrpcqa_voxel_size, [0, 0, 0])
-    v_mesh.translate(voxel_grid.origin, relative=True)
-    v_mesh.merge_close_vertices(0.0000001)
-    v_mesh.compute_vertex_normals()
+    # Get mesh:
+    v_mesh = proc.point_to_mesh(pcd, nrpcqa_voxel_size)
     # Clustering connected triangles ...
     triangle_cluster_ids, cluster_n_triangles, cluster_area = v_mesh.cluster_connected_triangles()
     triangle_cluster_ids = np.asarray(triangle_cluster_ids)
@@ -398,10 +394,19 @@ def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
     # MESH_AREA = v_mesh.get_surface_area()
     return [("METRIC_RATIO_TRIANGLE_DENSITY", NUM_LOW_CONNECTION_TRIANGLES/NUM_RAW_TRIANGLES)]
 
+
 def nrpcqa_voxelization(pcd, snapshotting = False, visualization = False, shades = 25):
-    """
-    TODO
-    """
+    '''
+        Uses voxelized model statistics to calculate metrics related to completeness.
+    Args:
+        pcd (type: PointCloud object) : point cloud to voxelize
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
+        shades (int) : equal to bar number in plot, if plotting is allowed, defaults to 25
+
+    Returns:
+        (list) : metric list of tuples with format (METRIC_NAME, METRIC_SCORE)
+    '''
     global nrpcqa_links
     global nrpcqa_downsized
     global nrpcqa_probs
@@ -437,9 +442,19 @@ def nrpcqa_voxelization(pcd, snapshotting = False, visualization = False, shades
     return [("METRIC_RATIO_RED_VOXELS",NUM_RED_VOXELS/NUM_VOXELS),("METRIC_RATIO_RED_POINTS", NUM_RED_POINTS/NUM_RAW_POINTS)]
 
 def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points = 5, n_nb= 10, shades = 10):
-    """
-    TODO
-    """
+    '''
+        Uses radius-based neighbourhood statistics to calculate metrics related to completeness.
+    Args:
+        pcd (type: PointCloud object) : point cloud to analyze
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
+        k_points (int) : radius is estimated by the mean distance to n_nb neighbours from a random set of k_points points, k_points defaults to 5
+        n_nb (int) : radius is estimated by the mean distance to n_nb neighbours from a random small set of k_points points, n_nb defaults to 10
+        shades (int) : equal to bar number in plot, if plotting is allowed, defaults to 10
+
+    Returns:
+        (list) : metric list of tuples with format (METRIC_NAME, METRIC_SCORE)
+    '''
     global nrpcqa_downsized
     global nrpcqa_links
     global nrpcqa_probs
@@ -505,10 +520,18 @@ def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points 
     NUM_NB_OUTLIERS = len(noise_pcd.points)
     return  [("METRIC_RATIO_RADIUS", NUM_NB_OUTLIERS/NUM_RAW_POINTS)]
 
-def find_mean_distance(pcd, k_points, n_nb):
-    """
-    TODO
-    """
+
+def find_mean_distance(pcd, k_points = 5, n_nb = 10):
+    '''
+        Calculates mean distance between the n_nb neighbours of k_points random points in the point cloud (pcd).
+    Args:
+        pcd (type: PointCloud object) : point cloud
+        k_points (int) : number of points to consider, defaults to 5
+        n_nb (int) : number of neighbours to consider for each point, defaults to 10
+
+    Returns:
+        mean_dist (float) : mean distance of all neighbours to the chosen point and between them
+    '''
     global nrpcqa_tree
     ks = random.sample(range(0, len(pcd.points)-1), k = k_points)
     dists = []
@@ -525,10 +548,21 @@ def find_mean_distance(pcd, k_points, n_nb):
     mean_dist =  np.mean(dists)
     return mean_dist
 
+
 def nrpcqa_lof(pcd, snapshotting = False, visualization = False, k = 10, k_points =5, n_nb = 10):
-    """
-    TODO
-    """
+    '''
+        Uses LOF outlier detection to calculate metrics related to accuracy/validity. A radius search is used to determine mean number of neighbours for the LOF algorithm, which is factored for large clouds.
+    Args:
+        pcd (type: PointCloud object) : point cloud to analyze
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
+        k (int) : mean of number of neighbours is found for random k points, defaults to 10.
+        k_points (int) : radius is estimated by the mean distance to n_nb neighbours from a random set of k_points points, k_points defaults to 5
+        n_nb (int) : radius is estimated by the mean distance to n_nb neighbours from a random small set of k_points points, n_nb defaults to 10
+
+    Returns:
+        (list) : metric list of tuples with format (METRIC_NAME, METRIC_SCORE)
+    '''
     global nrpcqa_downsized
     global nrpcqa_links
     global nrpcqa_probs
@@ -599,9 +633,20 @@ def nrpcqa_lof(pcd, snapshotting = False, visualization = False, k = 10, k_point
 
 
 def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_points= 5, n_nb = 10, k = 10, std_ratio = 2.0):
-    """
-    TODO
-    """
+    '''
+        Uses statistical outlier detection to calculate metrics related to accuracy/validity. A radius search is used to determine mean number of neighbours for the detection algorithm.
+    Args:
+        pcd (type: PointCloud object) : point cloud to analyze
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
+        k_points (int) : radius is estimated by the mean distance to n_nb neighbours from a random set of k_points points, k_points defaults to 5
+        n_nb (int) : radius is estimated by the mean distance to n_nb neighbours from a random small set of k_points points, n_nb defaults to 10
+        k (int) : mean of number of neighbours is found for random k points, defaults to 10
+        std_ratio (float) : standard deviation ratio used in statistical removal (lower is more aggresive), defaults to 2.0
+
+    Returns:
+        (list) : metric list of tuples with format (METRIC_NAME, METRIC_SCORE)
+    '''
     global nrpcqa_downsized
     global large
     global nrpcqa_tree
@@ -649,9 +694,13 @@ def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_point
 
 
 def nrpcqa_denoising(pcd, snapshotting = False, visualization = False):
-    """
-    TODO
-    """
+    '''
+        Denoises point cloud given that global probabilities have been updated in previous nrpcqa steps.
+    Args:
+        pcd (type: PointCloud object) : point cloud to analyze
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
+    '''
     global nrpcqa_clean
     global nrpcqa_probs
     # Add user-defined denoising agggresiveness:
@@ -792,6 +841,7 @@ def map_to_probabilities(values):
     max_value = max(values)
     mapped_probs = [1.0 - ((value - min_value)/(max_value - min_value)) for value in values]
     return mapped_probs
+
 
 def calculate_quality(value, num_metrics):
     '''

@@ -14,6 +14,36 @@ from numpy import dot
 from numpy.linalg import norm
 
 
+
+def point_to_mesh(pcd, voxel_size):
+    '''
+        Turns a point cloud to a mesh by turning into voxel grid and 3D-modelling voxels.
+    Args:
+        pcd (type: PointCloud object) : point cloud to model
+        voxel_size (float) : voxel size
+
+    Returns:
+        v_mesh (type: TriangleMesh object)
+    '''
+    # Reference: https://towardsdatascience.com/how-to-automate-voxel-modelling-of-3d-point-cloud-with-python-459f4d43a227
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size = voxel_size)
+    voxels = voxel_grid.get_voxels()
+    # Create mesh by turning voxels into 3D cubes:
+    v_mesh = o3d.geometry.TriangleMesh()
+    for i in range(len(voxels)):
+        cube=o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
+        cube.paint_uniform_color(voxels[i].color)
+        voxel_coord = voxels[i].grid_index
+        cube.translate(voxel_coord, relative=False)
+        v_mesh += cube
+    v_mesh.translate([0.5, 0.5, 0.5], relative=True)
+    v_mesh.scale(nrpcqa_voxel_size, [0, 0, 0])
+    v_mesh.translate(voxel_grid.origin, relative=True)
+    v_mesh.merge_close_vertices(0.0000001)
+    v_mesh.compute_vertex_normals()
+    return v_mesh
+
+
 def downsample_and_trace_cloud(pcd, voxel_size = 0.5):
     """
         Downsample point cloud to voxels with given voxel size, and return trace.
