@@ -19,19 +19,27 @@ Installation steps:
 
 2. You should now have a ProjectClouds folder containing all necessary files. Change location to the ProjectClouds folder through your Anaconda Prompt terminal.
 
-3. In the Anaconda Prompt, create the conda environment from the environment.yml file by entering:
+3. In the Anaconda Prompt, create the conda environment. This can be done in two ways.
+
+Alternative one. Create environment from the environment.yml file by entering:
 
     conda env create -f environment.yml
 
-4. Activate environment by entering:
+Alternative two. Create a new environment by entering:
 
-    conda activate 3ddava
+    conda create -n 3d-dava python=3.9
 
-5. Verify environment creation by entering (and checking if 3d-dava is listed):
+In the new environment, manually install the following packages: open3d, matplotlib, scikit-learn, scipy, pandas.
+
+4. Verify environment creation by entering (and checking if 3d-dava is listed):
 
     conda env list
 
-6. In the same directory, run the following script to install 3D-DaVa package:
+5. Activate environment by entering:
+
+    conda activate 3ddava
+
+6. While the ProjectClouds directory, run the following script to install 3D-DaVa package:
 
     python3 -m pip install .
 
@@ -45,7 +53,7 @@ Installation steps:
 You can use the package directly from the Anaconda command line.
 
 <h3> No Reference Data Validation </h3>
-    
+
 Data validation using only the intrinsic properties of the digitized point cloud. Returns a .json file containing the quality scores based on these.
 
     python -m 3D_DaVa processing [-h] [-o OUTPUT] cloud_file
@@ -55,6 +63,10 @@ Arguments:
 **cloud_file**: point cloud file to be asessed (recommended format: .ply, see notes).
 
 **-h, –help**: (Optional) show arguments
+
+**-vis, --visualize**: (Optional) allow visualization of process steps
+
+**-snap, --snapshot**: (Optional) allow snapshotting of process steps
 
 **-o OUTPUT, –output OUTPUT**: (Optional) filename of metric-filled output file. No file extension needed (automatically turned to .json)
 
@@ -69,6 +81,10 @@ Arguments:
 **cloud_file**: point cloud file to be asessed (recommended format: .ply, see notes).
 
 **-h, –help**: (Optional) show arguments
+
+**-vis, --visualize**: (Optional) allow visualization of process steps
+
+**-snap, --snapshot**: (Optional) allow snapshotting of process steps
 
 **-r REFERENCE**, –reference REFERENCE: reference file (recommended format: .stl, see notes)
 

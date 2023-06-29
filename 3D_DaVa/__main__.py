@@ -21,7 +21,6 @@ import random
 import re
 from itertools import combinations
 from sklearn.neighbors import LocalOutlierFactor
-import time
 
 
 # Global variables - used in No-Reference and Reference Processing:
@@ -966,8 +965,6 @@ def main(argv = None):
             # If present, process with reference:
             visualization = args.visualize
             snapshotting = args.snapshot
-            print(visualization)
-            print(snapshotting)
             if args.reference:
                 print("Processing with reference ... ")
                 reference_file = args.reference

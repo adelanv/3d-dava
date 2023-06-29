@@ -37,7 +37,7 @@ def point_to_mesh(pcd, voxel_size):
         cube.translate(voxel_coord, relative=False)
         v_mesh += cube
     v_mesh.translate([0.5, 0.5, 0.5], relative=True)
-    v_mesh.scale(nrpcqa_voxel_size, [0, 0, 0])
+    v_mesh.scale(voxel_size, [0, 0, 0])
     v_mesh.translate(voxel_grid.origin, relative=True)
     v_mesh.merge_close_vertices(0.0000001)
     v_mesh.compute_vertex_normals()
