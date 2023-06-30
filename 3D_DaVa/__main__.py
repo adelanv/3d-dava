@@ -6,7 +6,7 @@ import os
 import glob
 from . import processing as proc
 from . import alignment as ali
-from . import io
+from . import inout
 from functools import lru_cache
 import numpy as np
 import sys
@@ -46,7 +46,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     '''
     # TODO: For intermediary metric: turn point cloud (not downsized) to mesh using voxel modelling
     # TODO: Gatekeep snapshotting/visualization with one boolean
-    # TODO: Make possible changing between io.visualize and io.snapshot with one boolean
+    # TODO: Make possible changing between inout.visualize and inout.snapshot with one boolean
     # TODO: Try other R-PCQA approaches (see literature-Graph Similarity, total area covered, completeness) ...
     # TODO: Clean functions -> move to .py files
     # TODO: Register using correspondence sets (ISS/Curvature) or graph
@@ -60,7 +60,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     start_time = time.time()
 
     # Read original point cloud:
-    original_pcd = io.read_cloud(input_file)
+    original_pcd = inout.read_cloud(input_file)
     NUM_RAW_POINTS_PCD = len(original_pcd.points)
 
     print("Action in progress: process cloud without reference and denoise cloud...")
@@ -69,7 +69,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     process_without_reference(input_file)
     pcd = nr_process_cleaned_pcd
     # pcd = copy.deepcopy(original_pcd)
-    # io.visualize(pcd)
+    # inout.visualize(pcd)
 
     # Keep downsizing check for large point clouds (over 0.5mil):
     large = False
@@ -79,7 +79,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
 
     print("Action in progress: reading and sampling reference...")
     # Read reference:
-    original_ref = io.read_mesh(reference_file)
+    original_ref = inout.read_mesh(reference_file)
     # TODO: Intelligent sampling rate
     if large:
         factor = 1
@@ -91,7 +91,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     # Reference to be worked on:
     ref = copy.deepcopy(ref_pcd)
     NUM_RAW_POINTS_REF = len(ref.points)
-    # io.snapshot(ref, name="sampling", ref = True)
+    # inout.snapshot(ref, name="sampling", ref = True)
 
 
     print("Action in progress: voxelize reference...")
@@ -112,8 +112,8 @@ def process_with_reference(input_file:str, reference_file:str, *args):
         pcd_actual_inds = [list(corr_inds_pcd[i]) for i in pcd_voxel_inds]
         pcd_links = dict(zip(pcd_voxel_inds, pcd_actual_inds))
         # Snapshot:
-        io.snapshot(down_pcd, name ="downsized_pcd", ref = True)
-        io.snapshot(down_ref, name ="downsized_ref", ref = True)
+        inout.snapshot(down_pcd, name ="downsized_pcd", ref = True)
+        inout.snapshot(down_ref, name ="downsized_ref", ref = True)
 
 
     print("Action in progress: scaling to same size...")
@@ -137,7 +137,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     else:
         scaling_factor = max(ref_dims) / max(pcd_dims)
         pcd.scale(scaling_factor, center=pcd.get_center())
-    # io.visualize_differences(pcd, ref)
+    # inout.visualize_differences(pcd, ref)
 
 
     print("Action in progress: fast global alignment using feature matching...")
@@ -170,16 +170,16 @@ def process_with_reference(input_file:str, reference_file:str, *args):
         fitness = eva.fitness
         inlier_rmse = eva.inlier_rmse
         # pcd.transform(global_trans)
-        # io.visualize_differences(pcd, ref)
+        # inout.visualize_differences(pcd, ref)
 
     print("Action in progress: ICP local alignment P2P...")
     icp_trans = ali.icp_P2P_registration(pcd, ref, threshold, global_trans)
     pcd.transform(icp_trans)
-    # io.visualize_differences(pcd, ref)
+    # inout.visualize_differences(pcd, ref)
 
     if large:
         pcd = original_pcd.transform(icp_trans)
-    # io.visualize_differences(pcd, ref)
+    # inout.visualize_differences(pcd, ref)
 
 
     print("Action in progress: removing outliers (background elements)...")
@@ -198,7 +198,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     ind = np.where(distances >= background_threshold)[0]
     background_pcd = pcd.select_by_index(ind)
     no_background_pcd = pcd.select_by_index(ind, invert=True)
-    io.visualize_differences(no_background_pcd, background_pcd)
+    inout.visualize_differences(no_background_pcd, background_pcd)
     # Get metric:
     NUM_BACKGROUND = len(background_pcd.points)
     METRIC_RATIO_OUTLIER_BACKGROUND = NUM_BACKGROUND/NUM_RAW_POINTS_PCD
@@ -281,9 +281,9 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     }
     print("Action in progress: writting to .json file ...")
     if len(args) != 0:
-        io.write_to_json(json_dict, args[0], ref = True)
+        inout.write_to_json(json_dict, args[0], ref = True)
     else:
-        io.write_to_json(json_dict, ref = True)
+        inout.write_to_json(json_dict, ref = True)
 
 
 #____________________________________NR-PCQA____________________________________
@@ -315,9 +315,9 @@ def nrpcqa_downsize(pcd, snapshotting = False, visualization = False):
     pcd_links = dict(zip(pcd_voxel_inds, pcd_actual_inds))
     # Visual outputs:
     if snapshotting:
-        io.snapshot(down, name = "downsized")
+        inout.snapshot(down, name = "downsized")
     if visualization:
-        io.visualize(down)
+        inout.visualize(down)
     # Update global:
     nrpcqa_downsized = down
     nrpcqa_voxel_size = voxel_size
@@ -383,9 +383,9 @@ def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
     nrpcqa_probs[index_array] += 1
     # Print the index of the closest triangle for each point in the point cloud
     if snapshotting:
-        io.snapshot(full_mesh, name = "modelling")
+        inout.snapshot(full_mesh, name = "modelling")
     if visualization:
-        io.visualize(full_mesh)
+        inout.visualize(full_mesh)
     # Metrics:
     NUM_RAW_TRIANGLES = len(v_mesh.triangles)
     NUM_HIGH_CONNECTION_TRIANGLES = len(high_density_mesh.triangles)
@@ -415,11 +415,11 @@ def nrpcqa_voxelization(pcd, snapshotting = False, visualization = False, shades
     # Color voxelized cloud according to number of neighbours:
     colored_down, color_range = proc.color_cloud_greyscale(nrpcqa_downsized, values, shades = shades)
     if snapshotting:
-        io.snapshot(colored_down, name = "voxelized")
-        io.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", save = True, name="plot_voxelization")
+        inout.snapshot(colored_down, name = "voxelized")
+        inout.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", save = True, name="plot_voxelization")
     if visualization:
-        io.visualize(colored_down)
-        io.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", show=True, name="plot_voxelization")
+        inout.visualize(colored_down)
+        inout.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", show=True, name="plot_voxelization")
     # Get all indexes of red voxels:
     RED = np.where(np.all(np.array(colored_down.colors)==np.array([1.0,0.0,0.0]),axis=1))[0]
     # Get number of red voxels:
@@ -487,11 +487,11 @@ def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points 
     values = list(values)
     colored_pcd, color_range = proc.color_cloud_greyscale(original_pcd, values, shades = shades)
     if snapshotting:
-        io.snapshot(colored_pcd, name = "neighbourhood")
-        io.plot_values_by_color(values, color_range,  x_label="Number of neighbours", y_label="Frequency", save = True, name="plot_neighbourhood")
+        inout.snapshot(colored_pcd, name = "neighbourhood")
+        inout.plot_values_by_color(values, color_range,  x_label="Number of neighbours", y_label="Frequency", save = True, name="plot_neighbourhood")
     if visualization:
-        io.visualize(colored_pcd)
-        io.plot_values_by_color(values, color_range,  x_label="Number of neighbours", y_label="Frequency", show = True, name="plot_neighbourhood")
+        inout.visualize(colored_pcd)
+        inout.plot_values_by_color(values, color_range,  x_label="Number of neighbours", y_label="Frequency", show = True, name="plot_neighbourhood")
     # Outlier Detection: increase probability given lower values:
     mapped_probs = proc.map_to_probabilities(values)
     for k,v in nrpcqa_links.items():
@@ -508,10 +508,10 @@ def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points 
     noise_pcd = colored_pcd.select_by_index(ind)
     clean_pcd = colored_pcd.select_by_index(ind, invert=True)
     if snapshotting:
-        io.snapshot(noise_pcd, name = "nb_noise")
-        io.snapshot(clean_pcd, name = "nb_clean")
+        inout.snapshot(noise_pcd, name = "nb_noise")
+        inout.snapshot(clean_pcd, name = "nb_clean")
     if visualization:
-        io.visualize_differences(clean_pcd, noise_pcd)
+        inout.visualize_differences(clean_pcd, noise_pcd)
     # Outlier Detection: +1 for points statistically classified as noise:
     index_array = np.zeros(nrpcqa_probs.shape[0], dtype=bool)
     index_array[ind] = True
@@ -620,10 +620,10 @@ def nrpcqa_lof(pcd, snapshotting = False, visualization = False, k = 10, k_point
     else:
         NUM_LOF_OUTLIERS = 0
     if snapshotting:
-        io.snapshot(noise_pcd, name = "lof_noise")
-        io.snapshot(clean_pcd, name = "lof_clean" )
+        inout.snapshot(noise_pcd, name = "lof_noise")
+        inout.snapshot(clean_pcd, name = "lof_clean" )
     if visualization:
-        io.visualize_differences(clean_pcd, noise_pcd)
+        inout.visualize_differences(clean_pcd, noise_pcd)
     # Outlier Detection: +1 for points classified as noise:
     true_noise_ind = new_inds if large else inds_outliers
     index_array = np.zeros(nrpcqa_probs.shape[0], dtype=bool)
@@ -679,10 +679,10 @@ def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_point
         clean_pcd = pcd.select_by_index(ind)
         noise_pcd = pcd.select_by_index(ind, invert=True)
     if snapshotting:
-        io.snapshot(noise_pcd, name = "stat_noise")
-        io.snapshot(clean_pcd, name = "stat_clean" )
+        inout.snapshot(noise_pcd, name = "stat_noise")
+        inout.snapshot(clean_pcd, name = "stat_clean" )
     if visualization:
-        io.visualize_differences(clean_pcd, noise_pcd)
+        inout.visualize_differences(clean_pcd, noise_pcd)
     # Outlier Detection: +1 for points classified as noise:
     true_clean_ind = actual_inds if large else ind
     index_array = np.ones(nrpcqa_probs.shape[0], dtype=bool)
@@ -736,9 +736,9 @@ def nrpcqa_cleaning(pcd, snapshotting = False, visualization = False):
     # Paint uniformly:
     # nrpcqa_clean.paint_uniform_color([1, 0, 0])
     if snapshotting:
-        io.snapshot(nrpcqa_clean, name="nrpcqa_denoised")
+        inout.snapshot(nrpcqa_clean, name="nrpcqa_denoised")
     if visualization:
-        io.visualize(nrpcqa_clean)
+        inout.visualize(nrpcqa_clean)
     # Construct metrics:
     unclean_values = [x for x in scaled_probs if x > noise_threshold]
     unclean_Q1 = np.percentile(unclean_values, 25) # First quartile
@@ -753,7 +753,7 @@ def nrpcqa_cleaning(pcd, snapshotting = False, visualization = False):
     nrpcqa_noise = proc.get_cloud_by_index(pcd, noise_indices)
     NUM_NOISE = len(nrpcqa_noise.points)
     NUM_RAW_POINTS = len(pcd.points)
-    # io.visualize_differences(nrpcqa_noise, nrpcqa_outlier)
+    # inout.visualize_differences(nrpcqa_noise, nrpcqa_outlier)
     return [("METRIC_CLEAN_NOISE_A", NUM_NOISE/NUM_RAW_POINTS), ("METRIC_CLEAN_OUTLIERS_V", NUM_OUTLIERS/NUM_RAW_POINTS) ]
 
 
@@ -785,14 +785,14 @@ def process_without_reference(input_file: str, *args):
 
     print("Action in progress: reading point cloud...") # Order matters
     # Read point cloud from path:
-    original_pcd = io.read_cloud(input_file)
+    original_pcd = inout.read_cloud(input_file)
     NUM_RAW_POINTS = len(original_pcd.points)
     # Cloud to be worked on:
     pcd = copy.deepcopy(original_pcd)
     if snapshotting:
-        io.snapshot(original_pcd, name = "original")
+        inout.snapshot(original_pcd, name = "original")
     if visualization:
-        io.visualize(original_pcd)
+        inout.visualize(original_pcd)
 
     # Keep boolean check for large scan (over 0.5 mil):
     if len(pcd.points) > 500_000:
@@ -880,9 +880,9 @@ def process_without_reference(input_file: str, *args):
     json_dict["PROCESSING_TIME"] = str(nrpcqa_time)
     if len(args) != 0:
         # If output file name given, use it as filename:
-        io.write_to_json(json_dict, args[0])
+        inout.write_to_json(json_dict, args[0])
     else:
-        io.write_to_json(json_dict)
+        inout.write_to_json(json_dict)
 
 
 def calculate_quality(metrics, weights = [1/3, 1/3, 1/3]):
@@ -901,8 +901,6 @@ def calculate_quality(metrics, weights = [1/3, 1/3, 1/3]):
     ranges = [(range_boundaries[i], range_boundaries[i+1]) for i in range(len(range_boundaries)-1)]
     # Return quality according to the range of the score:
     actual_score = (metrics[0] * weights[0]) + (metrics[1] * weights[1]) + (metrics[2] * weights[2])
-    print(best_score)
-    print(actual_score)
     for i in range (len(ranges)):
         if actual_score <= ranges[i][1] and actual_score >= ranges[i][0]:
             if i == 0:
@@ -941,11 +939,11 @@ def stitch(dir_path:str, *args):
 
     # If name specified, place in same directory with new name:
     if len(args) != 0:
-        io.write_cloud(dir_path + "/" + args[0]+ ".ply", stitched_pcd)
+        inout.write_cloud(dir_path + "/" + args[0]+ ".ply", stitched_pcd)
     # Else, place in same directory with default name:
     else:
         name = "/3ddava_Stitched_"+str(num_plys)+"_Clouds.ply"
-        io.write_cloud(dir_path + name, stitched_pcd)
+        inout.write_cloud(dir_path + name, stitched_pcd)
 
 
 def main(argv = None):

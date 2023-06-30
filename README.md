@@ -19,13 +19,13 @@ Installation steps:
 
 2. You should now have a ProjectClouds folder containing all necessary files. Change location to the ProjectClouds folder through your Anaconda Prompt terminal.
 
-3. In the Anaconda Prompt, create the conda environment. This can be done in two ways.
+3. In the Anaconda Prompt, create the conda environment. This can be done in two ways, we recommend alternative 2 while the package is under work.
 
-Alternative one. Create environment from the environment.yml file by entering:
+Alternative 1. Create environment from the environment.yml file by entering:
 
     conda env create -f environment.yml
 
-Alternative two. Create a new environment by entering:
+Alternative 2. Create a new environment by entering:
 
     conda create -n 3d-dava python=3.9
 

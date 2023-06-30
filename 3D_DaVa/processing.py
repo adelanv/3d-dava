@@ -5,7 +5,7 @@ import open3d as o3d
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import KDTree as kdt
-from . import io
+from . import inout
 from sklearn.decomposition import PCA
 import os.path
 from pathlib import Path
@@ -256,7 +256,7 @@ def stitch_clouds(pcdlist):
 
     Returns:
         pcd (PointCloud object) : aggregated point cloud from the paths '''
-    pcd_np_arrs = [np.asarray(io.read_cloud(file).points) for file in pcdlist]
+    pcd_np_arrs = [np.asarray(inout.read_cloud(file).points) for file in pcdlist]
     pcd_unique_points = np.unique(np.vstack(pcd_np_arrs), axis=0)
     # Pass points to Open3D.o3d.geometry.PointCloud
     pcd = o3d.geometry.PointCloud()
