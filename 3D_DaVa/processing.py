@@ -14,6 +14,34 @@ from numpy import dot
 from numpy.linalg import norm
 
 
+def map_to_probabilities(values):
+    '''
+        Maps value to relative probability values using inverse of min-max scaling.
+    Args:
+        values (list) : list of integers/floats
+    Returns:
+        mapped_probs (list) : list of floats by mapping the values to the relative probability
+    '''
+    min_value = min(values)
+    max_value = max(values)
+    mapped_probs = [1.0 - ((value - min_value)/(max_value - min_value)) for value in values]
+    return mapped_probs
+
+
+def minmax_scale(X):
+    '''
+        Min-max scaling of a list of floats/integers. Maps all values to range [0,1].
+    Args:
+        X (list) : list of ints/floats
+
+    Returns:
+        scaled (list) : scaled list of ints/floats
+    '''
+    X_max = max(X)
+    X_min = min(X)
+    scaled = [((x - X_min) / (X_max - X_min)) for x in X]
+    return scaled
+
 
 def point_to_mesh(pcd, voxel_size):
     '''

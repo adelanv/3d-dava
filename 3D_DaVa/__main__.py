@@ -21,6 +21,7 @@ import random
 import re
 from itertools import combinations
 from sklearn.neighbors import LocalOutlierFactor
+from sklearn.preprocessing import MinMaxScaler
 
 
 # Global variables - used in No-Reference and Reference Processing:
@@ -391,7 +392,7 @@ def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
     NUM_LOW_CONNECTION_TRIANGLES =  len(low_density_mesh.triangles)
     # EXTRA: Mesh surface area (sum of all triangle areas) - voxelized:
     # MESH_AREA = v_mesh.get_surface_area()
-    return [("METRIC_RATIO_TRIANGLE_DENSITY", NUM_LOW_CONNECTION_TRIANGLES/NUM_RAW_TRIANGLES)]
+    return [("METRIC_RATIO_TRIANGLE_DENSITY_C", NUM_LOW_CONNECTION_TRIANGLES/NUM_RAW_TRIANGLES)]
 
 
 def nrpcqa_voxelization(pcd, snapshotting = False, visualization = False, shades = 25):
@@ -434,11 +435,11 @@ def nrpcqa_voxelization(pcd, snapshotting = False, visualization = False, shades
     index_array[actual_inds_flat] = True
     nrpcqa_probs[index_array] += 1
     # Outlier Detection: increase probability given lower values:
-    mapped_probs = map_to_probabilities(values)
+    mapped_probs = proc.map_to_probabilities(values)
     for k,v in nrpcqa_links.items():
         for ind in v:
             nrpcqa_probs[ind] += mapped_probs[k]
-    return [("METRIC_RATIO_RED_VOXELS",NUM_RED_VOXELS/NUM_VOXELS),("METRIC_RATIO_RED_POINTS", NUM_RED_POINTS/NUM_RAW_POINTS)]
+    return [("METRIC_RATIO_RED_VOXELS_C",NUM_RED_VOXELS/NUM_VOXELS),("METRIC_RATIO_RED_POINTS_C", NUM_RED_POINTS/NUM_RAW_POINTS)]
 
 def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points = 5, n_nb= 10, shades = 10):
     '''
@@ -492,7 +493,7 @@ def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points 
         io.visualize(colored_pcd)
         io.plot_values_by_color(values, color_range,  x_label="Number of neighbours", y_label="Frequency", show = True, name="plot_neighbourhood")
     # Outlier Detection: increase probability given lower values:
-    mapped_probs = map_to_probabilities(values)
+    mapped_probs = proc.map_to_probabilities(values)
     for k,v in nrpcqa_links.items():
         for ind in v:
             nrpcqa_probs[ind] += mapped_probs[k]
@@ -517,7 +518,7 @@ def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points 
     nrpcqa_probs[index_array] += 1
     # Construct metric:
     NUM_NB_OUTLIERS = len(noise_pcd.points)
-    return  [("METRIC_RATIO_RADIUS", NUM_NB_OUTLIERS/NUM_RAW_POINTS)]
+    return  [("METRIC_RATIO_RADIUS_V", NUM_NB_OUTLIERS/NUM_RAW_POINTS)]
 
 
 def find_mean_distance(pcd, k_points = 5, n_nb = 10):
@@ -628,7 +629,7 @@ def nrpcqa_lof(pcd, snapshotting = False, visualization = False, k = 10, k_point
     index_array = np.zeros(nrpcqa_probs.shape[0], dtype=bool)
     index_array[true_noise_ind] = True
     nrpcqa_probs[index_array] += 1
-    return [("METRIC_RATIO_LOF",NUM_LOF_OUTLIERS/NUM_RAW_POINTS)]
+    return [("METRIC_RATIO_LOF_V",NUM_LOF_OUTLIERS/NUM_RAW_POINTS)]
 
 
 def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_points= 5, n_nb = 10, k = 10, std_ratio = 2.0):
@@ -689,37 +690,45 @@ def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_point
     nrpcqa_probs[index_array] += 1
     # Construct metric:
     NUM_STATISTICAL_OUTLIERS = len(noise_pcd.points)
-    return [("METRIC_RATIO_STAT",NUM_STATISTICAL_OUTLIERS/NUM_RAW_POINTS)]
+    return [("METRIC_RATIO_STAT_V",NUM_STATISTICAL_OUTLIERS/NUM_RAW_POINTS)]
 
 
-def nrpcqa_denoising(pcd, snapshotting = False, visualization = False):
+def nrpcqa_cleaning(pcd, snapshotting = False, visualization = False):
     '''
-        Denoises point cloud given that global probabilities have been updated in previous nrpcqa steps.
+        Cleans point cloud of noise and outliers given global probabilities that have been updated in previous nrpcqa steps.
     Args:
         pcd (type: PointCloud object) : point cloud to analyze
         snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
         visualization (bool) : allow (True) visualization along the process, or default (False)
+
+    Returns:
+        (list) : metric list of tuples with format (METRIC_NAME, METRIC_SCORE)
     '''
     global nrpcqa_clean
     global nrpcqa_probs
     # Add user-defined denoising agggresiveness:
-    # - Alt 1: remove only points with highest probability - soft removal
-    # - Alt 2: E.g keep points with zero probability - aggresive removal
+    # - Alt 1: Remove only points with highest probability - soft removal
+    # - Alt 2: Keep only points with close-to-zero probability - aggresive removal
     # - Alt 3: No removal
-    outlier_removal_type = input("Insert outlier removal type aggresive (a/A) or soft (s/S) or none (ENTER):")
+    outlier_removal_type = input("Insert cleaning type aggresive (a/A) or soft (s/S) or none (ENTER):")
     outlier_removal_type = outlier_removal_type.lower()
     soft_choices = ["s", "soft"]
     aggresive_choices = ["a", "aggresive"]
     possible_choices = [""] + soft_choices + aggresive_choices
     while outlier_removal_type not in possible_choices:
-        outlier_removal_type = input("Type error! Insert outlier removal type aggresive (a/A) or soft (s/S) or none (ENTER):")
+        outlier_removal_type = input("Type error! Insert cleaning type aggresive (a/A) or soft (s/S) or none (ENTER):")
         outlier_removal_type = outlier_removal_type.lower()
-    # *TODO: Add a GUI bar for aggresiveness.
-    # TODO: For now: use quartile Q1 (soft) and Q3 (aggresive) as thresholds.
+    # Scale probabilities to [0,1]:
+    scaled_probs = proc.minmax_scale(nrpcqa_probs)
+    # Use IQR rule as threshold:
+    Q1 = np.percentile(scaled_probs, 25) # First quartile
+    Q3 = np.percentile(scaled_probs, 75) # Third quartile
+    IQR = Q3 - Q1
+    noise_threshold = Q3 + 1.5 * IQR
     if outlier_removal_type in soft_choices:
-        clean_indices = np.where(nrpcqa_probs != np.max(np.unique(nrpcqa_probs)))[0]
+        clean_indices = np.where(scaled_probs <= noise_threshold)[0]
     elif outlier_removal_type in aggresive_choices:
-        clean_indices = np.where(nrpcqa_probs == 0)[0]
+        clean_indices = np.where(scaled_probs <= Q3 + IQR)[0]
     else:
         # All are clean:
         clean_indices = list(range(0, len(nrpcqa_probs)))
@@ -730,6 +739,22 @@ def nrpcqa_denoising(pcd, snapshotting = False, visualization = False):
         io.snapshot(nrpcqa_clean, name="nrpcqa_denoised")
     if visualization:
         io.visualize(nrpcqa_clean)
+    # Construct metrics:
+    unclean_values = [x for x in scaled_probs if x > noise_threshold]
+    unclean_Q1 = np.percentile(unclean_values, 25) # First quartile
+    unclean_Q3 = np.percentile(unclean_values, 75) # Third quartile
+    unclean_IQR = unclean_Q3 - unclean_Q1
+    outlier_threshold = unclean_Q3 + 1.5 * unclean_IQR
+    outlier_values = [x for x in unclean_values if x > outlier_threshold]
+    outlier_indices = np.where(scaled_probs > outlier_threshold)[0]
+    nrpcqa_outlier = proc.get_cloud_by_index(pcd, outlier_indices)
+    NUM_OUTLIERS = len(nrpcqa_outlier.points)
+    noise_indices = np.where((scaled_probs > noise_threshold) & (scaled_probs <= outlier_threshold))[0]
+    nrpcqa_noise = proc.get_cloud_by_index(pcd, noise_indices)
+    NUM_NOISE = len(nrpcqa_noise.points)
+    NUM_RAW_POINTS = len(pcd.points)
+    # io.visualize_differences(nrpcqa_noise, nrpcqa_outlier)
+    return [("METRIC_CLEAN_NOISE_A", NUM_NOISE/NUM_RAW_POINTS), ("METRIC_CLEAN_OUTLIERS_V", NUM_OUTLIERS/NUM_RAW_POINTS) ]
 
 
 @lru_cache
@@ -797,25 +822,57 @@ def process_without_reference(input_file: str, *args):
     print("Action in progress: statistical removal of noise based on distance to neighbours...")
     nrpcqa_stat_metrics = nrpcqa_statistical(pcd, snapshotting = snapshotting, visualization = visualization)
 
-    print("Action in progress: denoising original point cloud...") # Must be last
-    nrpcqa_denoising(pcd, snapshotting = snapshotting, visualization = visualization)
+    print("Action in progress: cleaning original point cloud...") # Must be last
+    nrpcqa_cleaning_metrics = nrpcqa_cleaning(pcd, snapshotting = snapshotting, visualization = visualization)
 
     print("Action in progress: calculating quality...")
     # Fetch metrics:
-    metrics = [nrpcqa_modelling_metrics, nrpcqa_voxelization_metrics, nrpcqa_radius_metrics, nrpcqa_lof_metrics, nrpcqa_stat_metrics]
+    metrics = [nrpcqa_modelling_metrics, nrpcqa_voxelization_metrics, nrpcqa_radius_metrics, nrpcqa_lof_metrics, nrpcqa_stat_metrics, nrpcqa_cleaning_metrics]
     metrics_dict = dict(metrics[0])
     for i in range(1, len(metrics)):
         metrics_dict.update(metrics[i])
+
     # Calculate scores:
-    number_metrics = len(list(metrics_dict.values())) - 1
-    TOTAL = 0.0
-    for k,v in metrics_dict.items():
-        TOTAL += 1 - v
-    QUALITY = calculate_quality(TOTAL, number_metrics)
+    nrpcqa_accuracy = [v for k,v in metrics_dict.items() if k.endswith("_A")] # Noise
+    nrpcqa_completeness = [v for k,v in metrics_dict.items() if k.endswith("_C")] # Missing values
+    nrpcqa_validity =   [v for k,v in metrics_dict.items() if k.endswith("_V")] # Outliers
+
+    nrpcqa_accuracy = 1 - sum(nrpcqa_accuracy)/len(nrpcqa_accuracy) # Noise
+    nrpcqa_completeness = 1 - sum(nrpcqa_completeness)/ len(nrpcqa_completeness) # Missing values
+    nrpcqa_validity = 1 - sum(nrpcqa_validity)/len(nrpcqa_validity) # Outliers
+
+    metrics = [nrpcqa_accuracy, nrpcqa_completeness, nrpcqa_validity]
+
+    # TODO: Allow user-defined weighing of quality metrics:
+    while True:
+        try:
+            weight_accuracy = float(input("Accuracy weight/importance: "))
+            break
+        except ValueError:
+            print("Invalid input. Please enter a valid float or integer.")
+    while True:
+        try:
+            weight_completeness = float(input("Completeness weight/importance:"))
+            break
+        except ValueError:
+            print("Invalid input. Please enter a valid float or integer.")
+    while True:
+        try:
+            weight_validity = float(input("Validity weight/importance:"))
+            break
+        except ValueError:
+            print("Invalid input. Please enter a valid float or integer.")
+
+    weights = [weight_accuracy, weight_completeness, weight_validity]
+
+    QUALITY = calculate_quality(metrics, weights)
 
     print("Action in progress: writting to .json file...")
     # Write metrics to JSON file:
     json_dict = metrics_dict
+    json_dict["ACCURACY"] = nrpcqa_accuracy
+    json_dict["COMPLETENESS"] = nrpcqa_completeness
+    json_dict["VALIDITY"] = nrpcqa_validity
     json_dict["QUALITY"] = QUALITY
     # End processing time
     end_time = time.time()
@@ -828,36 +885,26 @@ def process_without_reference(input_file: str, *args):
         io.write_to_json(json_dict)
 
 
-def map_to_probabilities(values):
+def calculate_quality(metrics, weights = [1/3, 1/3, 1/3]):
     '''
-        Maps value to relative probability values using inverse of min-max scaling.
+        Maps weighted metrics to actual quality.
     Args:
-        values (list) : list of integers/floats
-    Returns:
-        mapped_probs (list) : list of floats by mapping the values to the relative probability
-    '''
-    min_value = min(values)
-    max_value = max(values)
-    mapped_probs = [1.0 - ((value - min_value)/(max_value - min_value)) for value in values]
-    return mapped_probs
-
-
-def calculate_quality(value, num_metrics):
-    '''
-        Maps value to actual quality (lower values mapped to worse quality). At the time being all measures are weighted equally.
-    Args:
-        value (float) : total score computed by aggregating metrics
-        num_metrics (int) : number of metrics used to calculate score
+        metrics (list) : metric scores in following order ACCURACY/COMPLETENESS/VALIDITY
+        weights (list) : list of weights for ACCURACY/COMPLETENESS/VALIDITY respectively, defaults to equally weighted
     Returns:
         quality (str) : either "Bad Quality", "Mixed Quality", "Good Quality", depending on value
     '''
     # Get the boundary values for each quality score:
-    range_boundaries = np.linspace(0, num_metrics + 1, 4)
+    best_score = sum(weights)
+    worst_score = 0
+    range_boundaries = np.linspace(worst_score, best_score, 4)
     ranges = [(range_boundaries[i], range_boundaries[i+1]) for i in range(len(range_boundaries)-1)]
-
     # Return quality according to the range of the score:
+    actual_score = (metrics[0] * weights[0]) + (metrics[1] * weights[1]) + (metrics[2] * weights[2])
+    print(best_score)
+    print(actual_score)
     for i in range (len(ranges)):
-        if value <= ranges[i][1] and value >= ranges[i][0]:
+        if actual_score <= ranges[i][1] and actual_score >= ranges[i][0]:
             if i == 0:
                 return "Bad Quality"
             elif i == 1:
