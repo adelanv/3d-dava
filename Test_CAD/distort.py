@@ -79,7 +79,7 @@ def read_mesh(filepath, normals = True):
 
 def apply_downsampling(ref):
     '''
-        Creating distorted clouds by randomly downsampling by removing 10%-30%-50%-70%-90% points from point cloud. This induces missing values.
+        Creating distorted clouds by randomly downsampling by removing 10%-30%-50%-70%-90% points from point cloud. This induces missing values.  Threat to completeness. 
     Args:
         ref (str) : reference as point cloud
 
@@ -103,7 +103,7 @@ def apply_downsampling(ref):
 
 def apply_gaussian(ref):
     '''
-        Creating distorted clouds by applying shift to each point randomly. All points superimposed with a zero-mean Gaussian geometry shift whose standard deviation is 0.1%, 0.25%, 0.55%, 0.75% and 1% of the bounding box.
+        Creating distorted clouds by applying shift to each point randomly. All points superimposed with a zero-mean Gaussian geometry shift whose standard deviation is 0.1%, 0.25%, 0.55%, 0.75% and 1% of the bounding box.  Threat to accuracy. 
     Args:
         ref (str) : reference as point cloud
 
@@ -130,7 +130,7 @@ def apply_gaussian(ref):
 
 def apply_uniform_shift(ref):
     '''
-        Creating distorted clouds by shifting. Shifting is applied to 10-20-30-40-50-60-70% of randomly selected points, with shifting ranges of -/+ 0.5-1-2-3-4-5-7% respectively of bounding box.
+        Creating distorted clouds by shifting. Shifting is applied to 10-20-30-40-50% of randomly selected points, with shifting ranges of -/+ 0.5-1-2-3-4% respectively of bounding box.  Threat to accuracy. 
     Args:
         ref (str) : reference as point cloud
 
@@ -165,7 +165,7 @@ def apply_uniform_shift(ref):
 
 def apply_local_missing(ref):
     '''
-        Creating distorted clouds by eliminating patches. We define a space anchor of 0.3% size of bounding box. Points in selected anchors are removed.
+        Creating distorted clouds by eliminating patches. We define a space anchor of 0.3% size of bounding box. Points in selected anchors are removed. Threat to completeness.
     Args:
         ref (str) : reference as point cloud
 
@@ -208,20 +208,63 @@ def apply_local_missing(ref):
         # visualize(distorted_ref)
     return local_missing_pcds
 
-def apply_local_offset(ref):
-    ...
-    return []
 
-def apply_rotation(ref):
-    ...
-    return []
+def apply_reconstruction(ref, sampling_rate):
+    '''
+        Creating distorted clouds by adding outliers by reconstruction of downsampled point clouds. Varies over 3 depth levels. Threat to accuracy. 
+    Args:
+        ref (str) : reference as point cloud
 
-def apply_reconstruction(ref):
-    ...
-    return []
+    Returns:
+        reconstructed_pcds (list) : list of distorted pcds
+    '''
+    depth_levels = [3,5,8]
+    # Fetch downsampled pcds:
+    downsampled_pcds = apply_downsampling(ref)
+    # Reconstruct using poisson surface reconstruction:
+    reconstructed_pcds = []
+    for pcd in downsampled_pcds:
+        for depth in depth_levels:
+            with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
+                reconstructed, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=depth)
+            # Sample CAD, turning mesh into point cloud:
+            ref_reconstructed = create_uniform_sampled_cloud_from_mesh(reconstructed, nr_points = sampling_rate, poisson = True, factor = 1)
+            reconstructed_pcds.append(ref_reconstructed)
+            # visualize(ref_reconstructed)
+    return reconstructed_pcds
 
 def apply_compression(ref):
-    ...
+    '''
+        Creating distorted clouds by octree compression: achieved by octree compression at different levels: 8-10-14-18-20. Threat to completeness.
+    Args:
+        ref (str) : reference as point cloud
+
+    Returns:
+        compressed_pcds (list) : list of distorted pcds
+    '''
+    return []
+
+def apply_local_offset(ref):
+    '''
+        Creating distorted clouds by dislocating point cloud locally. Anchored points get their geometry attributes increased by 5% of maximum side length of bounding box. Threat to accuracy. 
+    Args:
+        ref (str) : reference as point cloud
+
+    Returns:
+        offset_pcds (list) : list of distorted pcds
+    '''
+    return []
+
+
+def apply_rotation(ref):
+    '''
+        Creating distorted clouds by local warp. Anchor selection then points are rotated 10-20-30-40-50-50 along x-axis. Threat to accuracy. 
+    Args:
+        ref (str) : reference as point cloud
+
+    Returns:
+        rotation_pcds (list) : list of distorted pcds
+    '''
     return []
 
 
@@ -236,34 +279,45 @@ def distort(cad_path, output):
     # Read reference:
     cad = read_mesh(cad_path)
     # Pick sampling rate:
-    sampling_rate = 500_000
+    sampling_rate = input("Choose sampling rate or ENTER for default value (500,000):")
+    if sampling_rate == "":
+        sampling_rate = 500_000 # Default
+    else:
+        while not sampling_rate.isdigit() or int(sampling_rate) < 1:
+            sampling_rate = input("Type error! Positive integer required. Choose sampling rate or ENTER for default value (500,000):")
+    sampling_rate = int(sampling_rate)
     # Sample CAD, turning mesh into point cloud:
     ref_pcd = create_uniform_sampled_cloud_from_mesh(cad, nr_points = sampling_rate, poisson = True, factor = 1)
     # Reference to be add distortions on:
     ref = copy.deepcopy(ref_pcd)
-
+    
     print("Action in progress: applying distortions...")
     # ______________GEOMETRY DISTORTIONS______________
-    # Down-sampling: we randomly downsample by removing 15%-30%-45%-60%-70%-80%-90% points from point cloud (adds missing values)
+    # Down-sampling: we randomly downsample by removing 10%-30%-50%-70%-90% points from point cloud - Threat to completeness
     downsampled_pcds = apply_downsampling(ref)
-    # Gaussian geometry shifting: apply shift to each point randomly. All points superimposed with a zero-mena Gaussian geometry shift whose standard deviation is 0.1%, 0.25%, 0.4%, 0.55%,0.7%,0.85% and 1% of the bounding box.
+    # Gaussian geometry shifting: apply shift to each point randomly. All points superimposed with a zero-mena Gaussian geometry shift whose standard deviation is 0.001, 0.0025, 0.0055, 0.0075, 0.01 proportion of the bounding box. - Threat to accuracy
     gaussian_pcds = apply_gaussian(ref)
-    # Uniform geometry shifting: uniform geometry shifting is applied to geometry attributes of point cloud. Shifting is applied to 10-20-30-40-50-60-70% of randomly selected points, with shifting ranges of -/+ 0.5-1-2-3-4-5-7% respectively (10% random points with -/+ 0.5 shift … etc. ) of bounding box.
+    # Uniform geometry shifting: uniform geometry shifting is applied to geometry attributes of point cloud. Shifting is applied to 10-20-30-40-50% of randomly selected points, with shifting ranges of -/+ 0.5-1-2-3-4% respectively of bounding box. - Threat to accuracy
     uniform_pcds = apply_uniform_shift(ref)
-    # Local missing: we define a space anchor of 0.3% size of bounding box. Points in selected anchors are removed.
+    # Local missing: we define a space anchor of 0.3% size of bounding box. Points in selected anchors are removed. - Threat to completeness.
     local_missing_pcds = apply_local_missing(ref)
-    # Local offset: dislocate point cloud locally. Anchors used as before, but geometry attributes are increased by 5% of maximum side length of bounding box.
+    # Poisson Reconstruction: Downsample point clouds, then reconstruct to mesh and sample to cloud again (adds outliers) - Threat to validity. 
+    reconstructed_pcds = apply_reconstruction(ref, sampling_rate)
+
+    # TODO: Implement following:
+    # Local offset: dislocate point cloud locally. Anchors used as before, but geometry attributes are increased by 5% of maximum side length of bounding box. - Threat to accuracy.
     local_offset_pcds = apply_local_offset(ref)
-    # Local rotation: local warp of clouds. Same anchor selection. Points are rotated 20-25-30-35-40-45-50 degrees along x-axis.
+    # Local rotation: local warp of clouds. Same anchor selection. Points are rotated 10-20-30-40-50 degrees along x-axis. - Threat to accuracy. 
     local_rotation_pcds = apply_rotation(ref)
-    # Poisson Reconstruction: Downsample point clouds, then reconstruct to mesh and sample to cloud again (adds outliers)
-    reconstructed_pcd = apply_reconstruction(ref)
-    # Octree Compression: achieved by octree compression at different levels: 8-10-12-14-16-18-20.
+    # Octree Compression: achieved by octree compression at different levels: 8-10-14-18-20. - Threat to completeness.
     compressed_pcds = apply_compression(ref)
-    # ______________COLOR DISTORTIONS (TODO?)______________
-    ...
+    # Outlier scattering: scatter the cloud with outliers at random places. - Threat to validity.
+    # outlier_pcds = apply_outlier_scattering(ref)
+
+
     print(f"Action in progress: saving distorted clouds to {output} folder...")
     ...
+
 
 
 def main(argv = None):
@@ -290,7 +344,7 @@ def main(argv = None):
         if args.output:
             output_name = args.output
         else:
-            output_name = "sim"
+            output_name = "3D_DaVa_Simulations"
         distort(cad_path, output_name)
     except Exception as e:
         print(str(e) + " Action dropped: distorting dataset.  Use -h, --h or --help for more information.")

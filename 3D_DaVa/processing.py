@@ -14,9 +14,9 @@ from numpy import dot
 from numpy.linalg import norm
 
 
-def map_to_probabilities(values):
+def map_to_probabilities(values, inverse = True):
     '''
-        Maps value to relative probability values using inverse of min-max scaling.
+        Maps value to relative probability values. Inverse of min-max scaling is also possible.
     Args:
         values (list) : list of integers/floats
     Returns:
@@ -24,9 +24,28 @@ def map_to_probabilities(values):
     '''
     min_value = min(values)
     max_value = max(values)
-    mapped_probs = [1.0 - ((value - min_value)/(max_value - min_value)) for value in values]
+    if inverse:
+        mapped_probs = [1.0 - ((value - min_value)/(max_value - min_value)) for value in values]
+    else:
+        mapped_probs = [((value - min_value)/(max_value - min_value)) for value in values]
     return mapped_probs
 
+def generate_N_unique_colors(N):
+    '''
+        Color generator. Generates N unique colors in format [r,g,b], where RGB values are in range [0-1].
+    Args:
+        N (int) : number of colors
+
+    Returns:
+        colors (list) : list of lists with unique colors
+    '''
+    colors = []
+    while len(colors) < N:
+        color = np.random.choice(range(256), size=3).astype(np.float64) / 255.0
+        color = tuple(color)
+        if color not in colors:
+            colors.append(color)
+    return colors
 
 def minmax_scale(X):
     '''
@@ -41,6 +60,18 @@ def minmax_scale(X):
     X_min = min(X)
     scaled = [((x - X_min) / (X_max - X_min)) for x in X]
     return scaled
+
+def sigmoid(x):
+    '''
+    Turns x value into a [0,1] value using sigmoid:
+    Args:
+        x (float) : mapped value
+
+    Returns:
+        y (float) : x mapped to [0,1]
+    '''
+    return 1 / (1 + np.exp(-x))
+
 
 
 def point_to_mesh(pcd, voxel_size):

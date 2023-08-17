@@ -24,11 +24,7 @@ def global_fast_alignment(source_pcd, target_pcd, param_list, threshold):
      Returns:
          result (RegistrationResult): result of registration process
     '''
-    # Set random seed:
-    seed = 1
-
     # Fetch actual parameters from list:
-    distance_threshold = threshold
     iter = param_list[0]
     normal_radius = param_list[1]
     feature_radius = param_list[2]
@@ -38,10 +34,8 @@ def global_fast_alignment(source_pcd, target_pcd, param_list, threshold):
     source_fpfh = proc.get_FPFH_features(source_pcd, normal_radius = normal_radius, feature_radius=feature_radius, max_nn_normal = max_nn_normal, max_nn_feature=max_nn_feature)
     target_fpfh = proc.get_FPFH_features(target_pcd, normal_radius = normal_radius, feature_radius=feature_radius, max_nn_normal = max_nn_normal, max_nn_feature=max_nn_feature)
     # Actual registration:
-    result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(
-        source_pcd, target_pcd, source_fpfh, target_fpfh,
-        o3d.pipelines.registration.FastGlobalRegistrationOption(
-            maximum_correspondence_distance=distance_threshold, iteration_number=iter, seed=seed))
+    result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(source_pcd, target_pcd, source_fpfh, target_fpfh, 
+                                                                                   o3d.pipelines.registration.FastGlobalRegistrationOption(maximum_correspondence_distance=threshold, iteration_number=iter))
     # trans = result.transformation
     return result
 
