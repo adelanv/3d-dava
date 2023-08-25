@@ -164,7 +164,7 @@ def color_cloud_greyscale(pcd, values, shades = 10):
     for i in range (len(ranges)):
         # Color smallest range in red:
         if i == 0:
-            color_range[ranges[i]] = [1,0,0]
+            color_range[ranges[i]] = [0,0,0]
         else:
             color_range[ranges[i]] = [val_color, val_color, val_color]
             val_color += increase_rate

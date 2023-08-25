@@ -194,8 +194,8 @@ def plot_values_by_color(values, color_range, x_label = "X", y_label = "Y", fig_
     for i, (cnt, value, bar) in enumerate(zip(cnts, values, bars)):
         bar.set_facecolor(colors[i % len(colors)])
     # Set x,y labels:
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
+    plt.xlabel(x_label, fontsize=22)
+    plt.ylabel(y_label, fontsize=22)
     # Saving the plot as a .png file:
     if save:
         name = set_name(name, ref, "png")

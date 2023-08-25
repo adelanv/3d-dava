@@ -80,12 +80,15 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     print("Action in progress: read and sample reference...")
     # Read reference:
     original_ref = inout.read_mesh(reference_file)
+    '''
     # If large, use as many points as original pcd, else triple the number:
     if large:
         factor = 1
     else:
         factor = 3
-    sampling_rate = NUM_RAW_POINTS_PCD * factor
+    '''
+    # sampling_rate = NUM_RAW_POINTS_PCD * factor
+    sampling_rate = 500_000
     # Sample CAD, turning mesh into point cloud:
     ref_pcd = proc.create_uniform_sampled_cloud_from_mesh(original_ref, nr_points = sampling_rate)
     # Reference to be worked on:
@@ -108,6 +111,12 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     # Check which boundary box is bigger by volume:
     vol1 = np.prod(pcd_dims)
     vol2 = np.prod(ref_dims)
+    # Scale only point cloud:
+    scaling_factor = max(ref_dims) / max(pcd_dims)
+    # Scale point cloud and denoised point cloud:
+    pcd.scale(scaling_factor, center=pcd.get_center())
+    denoised_pcd.scale(scaling_factor, center=denoised_pcd.get_center())
+    '''
     if vol1 > vol2:
         scaling_factor = max(pcd_dims) / max(ref_dims)
         ref.scale(scaling_factor, center=ref.get_center())
@@ -117,6 +126,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
         # Scale point cloud and denoised point cloud:
         pcd.scale(scaling_factor, center=pcd.get_center())
         denoised_pcd.scale(scaling_factor, center=denoised_pcd.get_center())
+    '''
     if visualization:
         inout.visualize_differences(pcd, ref)
 
@@ -168,6 +178,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
         constraint = 0.0025
     else:
         constraint = 0.025
+    constraint = 0.01
     # Downsize given boundary box constraint - ref:
     voxel_size_ref = round(max(ref.get_max_bound() - ref.get_min_bound()) * constraint, 8)
     down_ref, corr_inds_ref = proc.downsample_and_trace_cloud(ref, voxel_size_ref)
@@ -365,6 +376,7 @@ def nrpcqa_downsize(pcd, snapshotting = False, visualization = False):
         constraint = 0.0025
     else:
         constraint = 0.025
+    constraint = 0.01
     # Downsize given boundary box-based constraint:
     voxel_size = round(max(pcd.get_max_bound() - pcd.get_min_bound()) * constraint, 8)
     down, corr_inds = proc.downsample_and_trace_cloud(pcd, voxel_size)
@@ -445,6 +457,7 @@ def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
         tree = o3d.geometry.KDTreeFlann(full_pcd)
         np_down = np.array(nrpcqa_downsized.points)
         values = np.empty(nrpcqa_probs.shape[0])
+        # colors = []
         for i in range(len(np_down)):
             # For each voxel, get closest point in full_pcd:
             [k, idx, _] = tree.search_knn_vector_3d(np_down[i], 1)
@@ -458,6 +471,8 @@ def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
             else:
                 for ind in actual_inds:
                     values[ind] = color_num_dict[tuple(point_color)]
+            # colors.append(point_color)
+        # inout.plot_values_by_color(values, color_range,  x_label="LOF Score", y_label="Frequency", save = True, name="nrpcqa_plot_lof")
         # Update scores:
         mapped_probs = proc.map_to_probabilities(values)
         for k,v in nrpcqa_links.items():
@@ -490,7 +505,7 @@ def nrpcqa_voxelization(pcd, snapshotting = False, visualization = False, shades
     # Get number of points per voxel (with and without index):
     values = [len(v) for v in list(nrpcqa_links.values())]
     # Color voxelized cloud according to number of neighbours:
-    colored_down, color_range = proc.color_cloud_greyscale(nrpcqa_downsized, values, shades = shades)
+    colored_down, color_range = proc.color_cloud_rainbow(nrpcqa_downsized, values, shades = shades)
     if snapshotting:
         inout.snapshot(colored_down, name = "nrpcqa_voxelized")
         inout.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", save = True, name="nrpcqa_plot_voxelization")
@@ -527,8 +542,8 @@ def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points 
     # If small data set, use original scan, else, keep using voxelized model:
     original_pcd = pcd
     NUM_RAW_POINTS = len(pcd.points)
-    if large:
-        pcd =  nrpcqa_downsized
+    # if large:
+    #    pcd =  nrpcqa_downsized
     if nrpcqa_tree:
         tree = nrpcqa_tree
     else:
@@ -643,7 +658,36 @@ def nrpcqa_lof(pcd, snapshotting = False, visualization = False, k = 10, k_point
     # Local Outlier Factor - get all points scored:
     clf = LocalOutlierFactor(n_neighbors = mean_num_nb*factor, n_jobs = -1, contamination = user_contamination)
     preds = clf.fit_predict(numpy_pcd)
-    inds_outliers = np.where(preds == -1)[0] # Store outlier (i.e -1 values) indices
+    values = -clf.negative_outlier_factor_ # LOF Scores
+    if large:
+        # Reattribute colors to full point cloud:
+        down_values = np.empty(NUM_RAW_POINTS).astype(np.int32)
+        for k,v in nrpcqa_links.items():
+            down_values[v] = values[k]
+        values = down_values
+    values = list(values)
+    if visualization:
+        colored_pcd, color_range = proc.color_cloud_rainbow(original_pcd, values, shades = 15)
+        inout.visualize(colored_pcd)
+        inout.plot_values_by_color(values, color_range,  x_label="LOF Score", y_label="Frequency", save = True, name="nrpcqa_plot_lof")
+    # Update scores:
+    # High values indicative of outliers:
+    mapped_probs = proc.map_to_probabilities(values, inverse = False)
+    if user_contamination:
+        inds_outliers = np.where(preds == -1)[0] # Store outlier (i.e -1 values) indices
+        # Update scores by giving pure 1's for contaminated points:
+        if large:
+            new_inds_full = [nrpcqa_links[i] for i in inds_outliers]
+            new_inds = [j for sub in new_inds_full for j in sub] # Flatten
+        true_noise_ind = new_inds if large else inds_outliers
+        index_array = np.zeros(nrpcqa_probs.shape[0], dtype=bool)
+        index_array[true_noise_ind] = True
+        mapped_probs = np.array(mapped_probs)
+        mapped_probs[index_array] = 1
+    for k,v in nrpcqa_links.items():
+        for ind in v:
+            nrpcqa_probs[ind] += mapped_probs[k]
+    '''
     if len(np.unique(preds)) != 1:
         # For large point cloud - use downsized version:
         if large:
@@ -665,6 +709,7 @@ def nrpcqa_lof(pcd, snapshotting = False, visualization = False, k = 10, k_point
     index_array = np.zeros(nrpcqa_probs.shape[0], dtype=bool)
     index_array[true_noise_ind] = True
     nrpcqa_probs[index_array] += 1
+    '''
 
 
 def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_points= 5, n_nb = 10, k = 10, std_ratio = 2.0):
