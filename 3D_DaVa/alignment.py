@@ -55,14 +55,14 @@ def evaluate(source_pcd, target_pcd, max_correspondence_distance, transformation
     eva = o3d.pipelines.registration.evaluate_registration(source_pcd, target_pcd, max_correspondence_distance, transformation)
     return eva
 
-def icp_P2P_registration(source_pcd, target_pcd, distance_threshold, transformation, max_iter = 2000):
+def icp_P2P_registration(source_pcd, target_pcd, transformation, distance_threshold = 0.02, max_iter = 2000):
     '''
         Point-to-point ICP (Iterative Closest Point) algorithm. Returns transformation needed for alignment.
     Args:
         source_pcd (PointCloud obj): point cloud to be aligned with target
         target_pcd (PointCloud obj): target point cloud
-        distance_threshold (float): maximum correspondence points-pair distance
         transformation (np.ndarray): initial transformation (e.g. obtained by global registration)
+        distance_threshold (float): maximum correspondence points-pair distance, defaults to 0.02
         max_iter (int): maximum number of iterations, if not converged, defaults to 2000
 
     Returns:

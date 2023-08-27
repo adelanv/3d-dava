@@ -37,6 +37,11 @@ large = False
 saving = False  #i.e Save denoised point cloud
 snapshotting = False # i.e Save intermediary outputs
 visualization = False # i.e Visualize intermediary outputs
+noise_ind = None
+outlier_ind = None
+soft_ind = None
+aggressive_ind = None
+
 
 @lru_cache
 def process_with_reference(input_file:str, reference_file:str, *args):
@@ -69,8 +74,9 @@ def process_with_reference(input_file:str, reference_file:str, *args):
 
     print("Action in progress: process cloud without reference...")
     process_without_reference(input_file)
-    denoised_pcd = nrpcqa_clean # Pre-denoised cloud
-    NUM_RAW_POINTS_PCD = len(original.points)
+    denoised_pcd = proc.get_cloud_by_index(original, aggressive_ind) # Aggressive denoising
+    # NUM_RAW_POINTS_PCD = len(original.points)
+
     # Cloud to be worked on:
     pcd = copy.deepcopy(original)
 
@@ -80,13 +86,7 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     print("Action in progress: read and sample reference...")
     # Read reference:
     original_ref = inout.read_mesh(reference_file)
-    '''
-    # If large, use as many points as original pcd, else triple the number:
-    if large:
-        factor = 1
-    else:
-        factor = 3
-    '''
+    
     # sampling_rate = NUM_RAW_POINTS_PCD * factor
     sampling_rate = 500_000
     # Sample CAD, turning mesh into point cloud:
@@ -116,17 +116,6 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     # Scale point cloud and denoised point cloud:
     pcd.scale(scaling_factor, center=pcd.get_center())
     denoised_pcd.scale(scaling_factor, center=denoised_pcd.get_center())
-    '''
-    if vol1 > vol2:
-        scaling_factor = max(pcd_dims) / max(ref_dims)
-        ref.scale(scaling_factor, center=ref.get_center())
-        original_ref.scale(scaling_factor, center=ref.get_center())
-    else:
-        scaling_factor = max(ref_dims) / max(pcd_dims)
-        # Scale point cloud and denoised point cloud:
-        pcd.scale(scaling_factor, center=pcd.get_center())
-        denoised_pcd.scale(scaling_factor, center=denoised_pcd.get_center())
-    '''
     if visualization:
         inout.visualize_differences(pcd, ref)
 
@@ -174,10 +163,12 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     pcd_links = nrpcqa_links
     voxel_size_pcd = nrpcqa_voxel_size
     # Get ref and denoised downsized variables:
+    '''
     if large:
         constraint = 0.0025
     else:
         constraint = 0.025
+    '''
     constraint = 0.01
     # Downsize given boundary box constraint - ref:
     voxel_size_ref = round(max(ref.get_max_bound() - ref.get_min_bound()) * constraint, 8)
@@ -213,21 +204,8 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     max_nn_normal = max_nn * large_factor if large else max_nn
     max_nn_feature = max_nn * large_factor if large else max_nn
     solution = [iter, normal_radius, feature_radius, max_nn_normal, max_nn_feature]
-    distances = alignment_pcd.compute_point_cloud_distance(alignment_ref)
-    lowest_distance = np.min(distances)
-    bounding_box_diagonal = proc.get_l2_distance(min_bound, max_bound)
-    overlap_rate = bounding_box_diagonal/lowest_distance
-    # Define custom tolerances
-    relative_tolerance = 0.1  # 10%
-    absolute_tolerance = 0.5  # 0.5 units
-    # If overlapping clouds, choose thresholds according to lowest distance between closest points
-    if overlap_rate >= 1:
-        if np.isclose(bounding_box_diagonal, overlap_rate, rtol=relative_tolerance, atol=absolute_tolerance):
-            threshold = lowest_distance
-        else:
-            threshold = lowest_distance/2
-    else:
-        threshold = (bounding_box_diagonal * overlap_rate)/2
+    # threshold ...
+    threshold = 0.01
     global_result = ali.global_fast_alignment(alignment_pcd, alignment_ref, solution, threshold)
     global_trans = global_result.transformation
     vis_alignment_pcd = copy.deepcopy(alignment_pcd)
@@ -237,29 +215,13 @@ def process_with_reference(input_file:str, reference_file:str, *args):
 
 
     print("Action in progress: registration refinement using ICP local alignment (P2P)...")
-    # Refine until sufficient registration (here 1 represents a perfect registration): 
-    good_registration_check = False
-    good_fitness_lower_threshold = 0.9
-    good_fitness_upper_threshold = 1.0
-    max_iterations = 3 # Holds maximum number of iterations before picking last achieved transformation
-    curr_iterations = 0 # Holds current iteration value
-    while not good_registration_check:
-        icp_trans = ali.icp_P2P_registration(alignment_pcd, alignment_ref, threshold, global_trans)
-        eva = ali.evaluate(alignment_pcd, alignment_ref, threshold, icp_trans)
-        fitness = eva.fitness
-        print("Point cloud registration fitness: ", fitness)
-        if fitness <= good_fitness_upper_threshold and fitness > good_fitness_lower_threshold:
-            good_registration_check = True
-        elif curr_iterations == max_iterations:
-            good_registration_check = True
-        else:
-            global_trans = icp_trans
-            curr_iterations += 1
-
+    icp_trans = ali.icp_P2P_registration(alignment_pcd, alignment_ref, threshold, global_trans)
+    eva = ali.evaluate(alignment_pcd, alignment_ref, threshold, icp_trans)
+    fitness = eva.fitness
+    print("Point cloud registration fitness: ", fitness)
     pcd.transform(icp_trans) # Transform actual (original) point cloud 
     if visualization:
         inout.visualize_differences(pcd, ref)
-
 
     print("Action in progress: distortion detection based on euclidean distance (P2Point)...")
     # Calculate distances between downsized digitized scan and reference
@@ -341,14 +303,14 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     METRIC_TRUENESS_PCA_2 = abs(proc.cosine_similarity(components_pcd[1], components_ref[1]))
     METRIC_TRUENESS_PCA_3 = abs(proc.cosine_similarity(components_pcd[2], components_ref[2]))
     PCA_COMPLETENESS = (METRIC_TRUENESS_PCA_1 + METRIC_TRUENESS_PCA_2 + METRIC_TRUENESS_PCA_3)/3
-    '''
 
     # Compute completeness score:
     # rpcqa_completeness_ratio = (SURFACE_COMPLETENESS + PCA_COMPLETENESS + REF_COMPLETENESS) / 3
+    '''
     rpcqa_completeness_ratio = REF_COMPLETENESS
 
-    print("Action in progress: denoising original point cloud...") # Must be last
-    cleaning(snapshotting = snapshotting, visualization = visualization)
+    print("Action in progress: updating noise and outlier information...") # Must be last
+    update_indices()
 
     # End processing time
     end_time = time.time()
@@ -371,11 +333,12 @@ def nrpcqa_downsize(pcd, snapshotting = False, visualization = False):
     global nrpcqa_voxel_size
     global nrpcqa_links
     global large
-
+    '''
     if large:
         constraint = 0.0025
     else:
         constraint = 0.025
+    '''
     constraint = 0.01
     # Downsize given boundary box-based constraint:
     voxel_size = round(max(pcd.get_max_bound() - pcd.get_min_bound()) * constraint, 8)
@@ -393,6 +356,36 @@ def nrpcqa_downsize(pcd, snapshotting = False, visualization = False):
     nrpcqa_downsized = down
     nrpcqa_voxel_size = voxel_size
     nrpcqa_links = pcd_links
+
+
+def nrpcqa_voxelization(pcd, snapshotting = False, visualization = False, shades = 25):
+    '''
+        Uses voxelized model statistics to calculate metrics related to completeness.
+    Args:
+        pcd (type: PointCloud object) : point cloud to voxelize
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
+        shades (int) : equal to bar number in plot, if plotting is allowed, defaults to 25
+    '''
+    global nrpcqa_links
+    global nrpcqa_downsized
+    global nrpcqa_probs
+
+    # Get number of points per voxel (with and without index):
+    values = [len(v) for v in list(nrpcqa_links.values())]
+    # Color voxelized cloud according to number of neighbours:
+    colored_down, color_range = proc.color_cloud_rainbow(nrpcqa_downsized, values, shades = shades)
+    if snapshotting:
+        inout.snapshot(colored_down, name = "nrpcqa_voxelized")
+        inout.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", save = True, name="nrpcqa_plot_voxelization")
+    if visualization:
+        inout.visualize(colored_down)
+        inout.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", show=True, name="nrpcqa_plot_voxelization")
+    # Update scores:
+    mapped_probs = proc.map_to_probabilities(values)
+    for k,v in nrpcqa_links.items():
+        for ind in v:
+            nrpcqa_probs[ind] += mapped_probs[k]
 
 
 def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
@@ -457,7 +450,6 @@ def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
         tree = o3d.geometry.KDTreeFlann(full_pcd)
         np_down = np.array(nrpcqa_downsized.points)
         values = np.empty(nrpcqa_probs.shape[0])
-        # colors = []
         for i in range(len(np_down)):
             # For each voxel, get closest point in full_pcd:
             [k, idx, _] = tree.search_knn_vector_3d(np_down[i], 1)
@@ -471,8 +463,6 @@ def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
             else:
                 for ind in actual_inds:
                     values[ind] = color_num_dict[tuple(point_color)]
-            # colors.append(point_color)
-        # inout.plot_values_by_color(values, color_range,  x_label="LOF Score", y_label="Frequency", save = True, name="nrpcqa_plot_lof")
         # Update scores:
         mapped_probs = proc.map_to_probabilities(values)
         for k,v in nrpcqa_links.items():
@@ -488,35 +478,6 @@ def nrpcqa_modelling(pcd, snapshotting = False, visualization = False):
         if visualization:
             inout.visualize(v_mesh)
 
-
-def nrpcqa_voxelization(pcd, snapshotting = False, visualization = False, shades = 25):
-    '''
-        Uses voxelized model statistics to calculate metrics related to completeness.
-    Args:
-        pcd (type: PointCloud object) : point cloud to voxelize
-        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
-        visualization (bool) : allow (True) visualization along the process, or default (False)
-        shades (int) : equal to bar number in plot, if plotting is allowed, defaults to 25
-    '''
-    global nrpcqa_links
-    global nrpcqa_downsized
-    global nrpcqa_probs
-
-    # Get number of points per voxel (with and without index):
-    values = [len(v) for v in list(nrpcqa_links.values())]
-    # Color voxelized cloud according to number of neighbours:
-    colored_down, color_range = proc.color_cloud_rainbow(nrpcqa_downsized, values, shades = shades)
-    if snapshotting:
-        inout.snapshot(colored_down, name = "nrpcqa_voxelized")
-        inout.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", save = True, name="nrpcqa_plot_voxelization")
-    if visualization:
-        inout.visualize(colored_down)
-        inout.plot_values_by_color(values, color_range, x_label="Number contained points per voxel", y_label="Number of voxels", show=True, name="nrpcqa_plot_voxelization")
-    # Update scores:
-    mapped_probs = proc.map_to_probabilities(values)
-    for k,v in nrpcqa_links.items():
-        for ind in v:
-            nrpcqa_probs[ind] += mapped_probs[k]
     
 
 def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points = 5, n_nb= 10, shades = 10):
@@ -542,8 +503,9 @@ def nrpcqa_radius_nb(pcd, snapshotting = False, visualization = False, k_points 
     # If small data set, use original scan, else, keep using voxelized model:
     original_pcd = pcd
     NUM_RAW_POINTS = len(pcd.points)
-    # if large:
-    #    pcd =  nrpcqa_downsized
+
+    if large:
+        pcd =  nrpcqa_downsized
     if nrpcqa_tree:
         tree = nrpcqa_tree
     else:
@@ -669,7 +631,7 @@ def nrpcqa_lof(pcd, snapshotting = False, visualization = False, k = 10, k_point
     if visualization:
         colored_pcd, color_range = proc.color_cloud_rainbow(original_pcd, values, shades = 15)
         inout.visualize(colored_pcd)
-        inout.plot_values_by_color(values, color_range,  x_label="LOF Score", y_label="Frequency", save = True, name="nrpcqa_plot_lof")
+        inout.plot_values_by_color(values, color_range,  x_label="LOF Score", y_label="Frequency", save = False, name="nrpcqa_plot_lof")
     # Update scores:
     # High values indicative of outliers:
     mapped_probs = proc.map_to_probabilities(values, inverse = False)
@@ -687,29 +649,6 @@ def nrpcqa_lof(pcd, snapshotting = False, visualization = False, k = 10, k_point
     for k,v in nrpcqa_links.items():
         for ind in v:
             nrpcqa_probs[ind] += mapped_probs[k]
-    '''
-    if len(np.unique(preds)) != 1:
-        # For large point cloud - use downsized version:
-        if large:
-            # Remove all point belonging to outlier voxels from original cloud:
-            new_inds_full = [nrpcqa_links[i] for i in inds_outliers]
-            new_inds = [j for sub in new_inds_full for j in sub] # Flatten
-            noise_pcd = original_pcd.select_by_index(new_inds)
-            clean_pcd = original_pcd.select_by_index(new_inds, invert=True)
-        else:
-            noise_pcd = pcd.select_by_index(inds_outliers)
-            clean_pcd = pcd.select_by_index(inds_outliers, invert=True)
-    if snapshotting:
-        inout.snapshot(noise_pcd, name = "nrpcqa_lof_noise")
-        inout.snapshot(clean_pcd, name = "nrpcqa_lof_clean" )
-    if visualization:
-        inout.visualize_differences(clean_pcd, noise_pcd)
-    # Update scores:
-    true_noise_ind = new_inds if large else inds_outliers
-    index_array = np.zeros(nrpcqa_probs.shape[0], dtype=bool)
-    index_array[true_noise_ind] = True
-    nrpcqa_probs[index_array] += 1
-    '''
 
 
 def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_points= 5, n_nb = 10, k = 10, std_ratio = 2.0):
@@ -758,7 +697,6 @@ def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_point
         noise_pcd = pcd.select_by_index(ind, invert=True)
     if snapshotting:
         inout.snapshot(noise_pcd, name = "nrpcqa_stat_noise")
-        inout.snapshot(clean_pcd, name = "nrpcqa_stat_clean" )
     if visualization:
         inout.visualize_differences(clean_pcd, noise_pcd)
     # Update scores:
@@ -771,43 +709,6 @@ def nrpcqa_statistical(pcd, snapshotting = False, visualization = False, k_point
     #*return [("METRIC_RATIO_STAT_V",NUM_STATISTICAL_OUTLIERS/NUM_RAW_POINTS)]
 
 
-def cleaning(snapshotting = False, visualization = False, output_name = "denoised"):
-    '''
-        Cleans point cloud of noise and outliers given global probabilities that have been updated in previous nrpcqa steps. Saves model.
-    Args:
-        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
-        visualization (bool) : allow (True) visualization along the process, or default (False)
-        output_name (str) : name of denoised point cloud
-    '''
-    global nrpcqa_clean
-    global nrpcqa_probs
-    global original
-    global saving
-
-    # Scale probabilities to [0,1]:
-    scaled_probs = proc.minmax_scale(nrpcqa_probs)
-    # Use IQR rule as threshold:
-    Q1 = np.percentile(scaled_probs, 25) # First quartile
-    Q3 = np.percentile(scaled_probs, 75) # Third quartile
-    IQR = Q3 - Q1
-    noise_threshold = Q3 + 1.5 * IQR
-    aggresive_noise_threshold = Q3 + IQR
-    clean_indices = np.where(scaled_probs <= aggresive_noise_threshold)[0]
-    clean = proc.get_cloud_by_index(original, clean_indices)
-    # Paint uniformly:
-    clean.paint_uniform_color([0, 0.5, 0])
-    if snapshotting:
-        inout.snapshot(clean, name="nrpcqa_denoised")
-    if visualization:
-        inout.visualize(clean)
-    if saving:
-        # Save denoised cloud locally with proper extension:
-        full_name = output_name+".pcd"
-        inout.write_cloud(full_name, nrpcqa_clean)
-    # Save globally too:
-    nrpcqa_clean = clean
-
-
 @lru_cache
 def process_without_reference(input_file: str):
     '''
@@ -815,17 +716,11 @@ def process_without_reference(input_file: str):
     Args:
         input_file (str) : path of point cloud to analyse
     '''
-    # TODO: Add more NR-PCQA approaches  ...
+    # TODO: Add more NR-PCQA approaches
 
     # Global variables to update:
-    global nrpcqa_downsized
-    global nrpcqa_links
-    global nrpcqa_clean
-    global nrpcqa_voxel_size
     global nrpcqa_probs
-    # Keep boolean check for large detected cloud:
     global large
-    # Keep boolean check for visualization/snapshots:
     global snapshotting
     global visualization
     global original
@@ -871,50 +766,63 @@ def process_without_reference(input_file: str):
     print("Action in progress: statistical removal of noise based on distance to neighbours...")
     nrpcqa_statistical(pcd, snapshotting = snapshotting, visualization = visualization)
 
-    print("Action in progress: denoising original point cloud...") # Must be last
-    cleaning(snapshotting = snapshotting, visualization = visualization)
+    print("Action in progress: updating noise and outlier information...") # Must be last
+    update_indices()
 
     # End processing time
     end_time = time.time()
     nrpcqa_time = datetime.timedelta(seconds=end_time - start_time)
     print("Processing time (NRPCQA):" +  str(nrpcqa_time))
     
+            
 
-def weight_quality(metrics, weights):
+def save_denoised(snapshotting = False, visualization = False):
     '''
-        Maps weighted metrics to actual quality.
+        Partly cleans point cloud of noise given global probabilities that have been updated in previous nrpcqa steps.
     Args:
-        metrics (list) : metric scores in following order ACCURACY/VALIDITY/(optional)COMPLETENESS
-        weights (list) : list of weights for  ACCURACY/VALIDITY/(optional)COMPLETENESS respectively, defaults to equally weighted
-    Returns:
-        quality (str) : either "Bad Quality", "Mixed Quality", "Good Quality", depending on value
+        snapshotting (bool) : allow (True) taking snapshots along the process, or default (False)
+        visualization (bool) : allow (True) visualization along the process, or default (False)
     '''
-    # Get the boundary values for each quality score:
-    best_score = sum(weights)
-    worst_score = 0
-    range_boundaries = np.linspace(worst_score, best_score, 4)
-    ranges = [(range_boundaries[i], range_boundaries[i+1]) for i in range(len(range_boundaries)-1)]
-    # Return quality according to the range of the score:
-    actual_score = (metrics[0] * weights[0]) + (metrics[1] * weights[1]) + (metrics[2] * weights[2])
-    for i in range (len(ranges)):
-        if actual_score <= ranges[i][1] and actual_score >= ranges[i][0]:
-            if i == 0:
-                return "Bad Quality"
-            elif i == 1:
-                return "Mixed Quality"
-            else:
-                return "Good Quality"
+    global soft_ind
+    global aggressive_ind
+    global original
 
+    # Ask user for aggressiveness level in denoising point cloud:
+    denoising_type = input("Choose denoising: aggressive (a/A) OR soft (s/S) OR none (ENTER):")
+    denoising_type = denoising_type.lower()
+    soft_choices = ["s", "soft"]
+    aggressive_choices = ["a", "aggressive", "aggresive"]
+    possible_choices = [""] + soft_choices + aggressive_choices
+    while denoising_type not in possible_choices:
+        denoising_type = input("Type error! Choose denoising: aggressive (a/A) OR soft (s/S) OR none (ENTER):")
+        denoising_type = denoising_type.lower()
+    # Fetch requested indices:
+    if denoising_type in soft_choices:
+        clean_indices = soft_ind
+    elif denoising_type in aggressive_choices:
+        clean_indices = aggressive_ind
+    else:
+        clean_indices = list(range(0, len(original.points)))
+    denoised = proc.get_cloud_by_index(original, clean_indices)
+    # Paint uniformly:
+    denoised.paint_uniform_color([0, 0.5, 0])
+    if snapshotting:
+        inout.snapshot(denoised, name="denoised")
+    if visualization:
+        inout.visualize(denoised)
+    # Save denoised cloud locally with proper extension:
+    inout.write_cloud("denoised.pcd", denoised)
 
-def quality_calculation(weights, reference = False, output = "metrics"):
+def update_indices():
     '''
-        Calculates accuracy, validity, completeness based on global scores that have been updated in previous nrpcqa steps. Saves results to JSON. 
-    Args:
-        weights (list) : list of weights for ACCURACY/COMPLETENESS/VALIDITY respectively, defaults to equally weighted
-        reference (bool): boolean to check if NRPCQA or RPCQA.
+        Updates indices for noise, outlier, soft and aggressive-denoised clouds.
     '''
     global nrpcqa_probs
     global original
+    global noise_ind
+    global outlier_ind
+    global soft_ind
+    global aggressive_ind
 
     # TODO: Find rule for differencing between noise and outliers in literature or explain choice.
     scaled_probs = proc.minmax_scale(nrpcqa_probs)
@@ -929,12 +837,57 @@ def quality_calculation(weights, reference = False, output = "metrics"):
     unclean_Q3 = np.percentile(unclean_values, 75) # Third quartile
     unclean_IQR = unclean_Q3 - unclean_Q1
     outlier_threshold = unclean_Q3 + 1.5 * unclean_IQR
-    # Fetch clouds by indices:
-    noise_indices = np.where((scaled_probs > noise_threshold) & (scaled_probs <= outlier_threshold))[0]
-    noise = proc.get_cloud_by_index(original, noise_indices)
-    outlier_indices = np.where(scaled_probs > outlier_threshold)[0]
-    outlier = proc.get_cloud_by_index(original, outlier_indices)
-    # Get number of highly possible noise/outliers:
+    # Update indices and fetch point clouds:
+    # Noise:
+    noise_ind = np.where((scaled_probs > noise_threshold) & (scaled_probs <= outlier_threshold))[0]
+    # Outliers:
+    outlier_ind = np.where(scaled_probs > outlier_threshold)[0]
+    # Denoised:
+    soft_ind = np.where(scaled_probs <= outlier_threshold)[0]
+    aggressive_ind = np.where(scaled_probs <= noise_threshold)[0]
+
+
+def weight_quality(metrics, weights, reference):
+    '''
+        Maps weighted metrics to actual quality.
+    Args:
+        metrics (list) : metric scores in following order ACCURACY/VALIDITY/(optional)COMPLETENESS
+        weights (list) : list of weights for  ACCURACY/VALIDITY/(optional)COMPLETENESS respectively, defaults to equally weighted
+        reference (bool): boolean to check if NRPCQA or RPCQA.
+    Returns:
+        quality (str) : either "Bad Quality", "Mixed Quality", "Good Quality", depending on value
+    '''
+    # Get the boundary values for each quality score:
+    sum_weights = sum(weights)
+    # If RPCQA block has been processed, consider completeness as part of quality metric:
+    if reference:
+        weighted_accuracy = metrics[0] * weights[0]
+        weighted_validity =  metrics[1] * weights[1]
+        weighted_completeness =  metrics[2] * weights[2]
+        weighted_sum = weighted_accuracy + weighted_validity + weighted_completeness
+    else:
+        weighted_accuracy =  metrics[0] * weights[0]
+        weighted_validity =  metrics[1] * weights[1]
+        weighted_sum = weighted_accuracy + weighted_validity
+    # Calculate quality:
+    quality = weighted_sum/sum_weights
+    return quality
+
+
+def quality_calculation(weights, reference = False, output = "metrics"):
+    '''
+        Calculates accuracy, validity, completeness based on global scores that have been updated in previous nrpcqa steps. Saves results to JSON. 
+    Args:
+        weights (list) : list of weights for ACCURACY/COMPLETENESS/VALIDITY respectively, defaults to equally weighted
+        reference (bool): boolean to switch between NRPCQA (False) or RPCQA (True) quality calculations.
+    '''
+    global noise_ind
+    global outlier_ind
+    global original
+
+    # Get number of noise/outliers:
+    noise = proc.get_cloud_by_index(original, noise_ind)
+    outlier = proc.get_cloud_by_index(original, outlier_ind)
     NUM_NOISE = len(noise.points)
     NUM_OUTLIERS = len(outlier.points)
     NUM_RAW_POINTS = len(original.points)
@@ -942,22 +895,23 @@ def quality_calculation(weights, reference = False, output = "metrics"):
         inout.visualize_differences(noise, outlier)
     if reference:
         # Calculate both accuracy, validity, completeness:
-        # TODO : Check notes:
         ACCURACY = 1.0 - (NUM_NOISE/NUM_RAW_POINTS)
         VALIDITY = 1.0 - (NUM_OUTLIERS/NUM_RAW_POINTS)
         COMPLETENESS = rpcqa_completeness_ratio
+        metrics = [ACCURACY, VALIDITY, COMPLETENESS]
     else:
         ACCURACY = 1.0 - (NUM_NOISE/NUM_RAW_POINTS)
         VALIDITY = 1.0 - (NUM_OUTLIERS/NUM_RAW_POINTS)
-        COMPLETENESS = 1.0 # We do not know - so we assume perfect (no missing values)
-    metrics = [ACCURACY, VALIDITY, COMPLETENESS]
+        # COMPLETENESS = 1.0 # We do not know - so we assume perfect (no missing values)
+        metrics = [ACCURACY, VALIDITY]
     # Weight results and fetch overall quality metric:
-    QUALITY = weight_quality(metrics, weights)
+    QUALITY = weight_quality(metrics, weights, reference)
     # Save to JSON:
     json_dict = {}
     json_dict["ACCURACY"] = ACCURACY
     json_dict["VALIDITY"] = VALIDITY
-    json_dict["COMPLETENESS"] = COMPLETENESS
+    if reference:
+        json_dict["COMPLETENESS"] = COMPLETENESS
     json_dict["QUALITY"] = QUALITY
     inout.write_to_json(json_dict, output)
 
@@ -972,21 +926,17 @@ def stitch(dir_path:str, *args):
         *args (str) : name of output file - optional
     '''
     # TODO: Multiway registration
-
     # Get all paths of .ply files from given directory:
     ply_files = []
     os.chdir(dir_path)
     for file in glob.glob("*.ply"):
         ply_files.append(file)
-
     # Check that .ply files are found in directory:
     num_plys = len(ply_files)
     if num_plys == 0:
         raise FileNotFoundError("No .ply files found in directory!")
-
     # Stitch :
     stitched_pcd = proc.stitch_clouds(ply_files)
-
     # If name specified, place in same directory with new name:
     if len(args) != 0:
         inout.write_cloud(dir_path + "/" + args[0]+ ".ply", stitched_pcd)
@@ -1016,7 +966,6 @@ def main(argv = None):
 
     # Subparsers for each functionality (processing and stitching):
     subparsers = parser.add_subparsers(help='Help', dest='which')
-
     # Processing subparser:
     processing_input = subparsers.add_parser('processing', help='Processing Point Cloud Help')
     # Obligatory argument:
@@ -1029,14 +978,12 @@ def main(argv = None):
     processing_input.add_argument("-snap", "--snapshot",  help = "Allow snapshotting of process steps." ,  action="store_true")
     # Add saving denoised point cloud as argument
     processing_input.add_argument("-save", "--save",  help = "Save denoised point cloud as (.pcd)." ,  action="store_true")
-
     # Stitching subparser:
     stitching = subparsers.add_parser('stitching', help='Stitching Files Help')
     # Obligatory argument:
     stitching.add_argument("directory_path", type=proc.is_dir, help = "Absolute path of directory containing .ply clouds.")
     # Optional arguments:
     stitching.add_argument("-o", "--output",  help = "Filename of output file. No file extension needed.")
-    # TODO: Add saving denoised point cloud as an option under processing.
 
     # TODO: Validate output filename (e.g. pathvalidate package, regex)
     args = parser.parse_args(argv)
@@ -1055,15 +1002,6 @@ def main(argv = None):
     # Parse processing:
     else:
         try:
-            while True:
-                try:
-                    weight_accuracy = float(input("Accuracy weight/importance: "))
-                    weight_validity = float(input("Validity weight/importance: "))
-                    weight_completeness = float(input("Completeness weight/importance: "))
-                    break
-                except ValueError:
-                    print("Invalid input. Please enter a valid float or integer.")
-            weights = [weight_accuracy,  weight_validity,  weight_completeness]
             # Validate format:
             input_file = args.cloud_file
             if not proc.is_path(input_file):
@@ -1082,6 +1020,28 @@ def main(argv = None):
                 # Validate format:
                 if not reference_file.endswith(".stl"):
                     raise TypeError("Reference/CAD file must be in .stl format.")
+                while True:
+                    try:
+                        weight_accuracy = input("Accuracy weight/importance OR unknown (ENTER): ")
+                        weight_validity = input("Validity weight/importance OR unknown (ENTER): ")
+                        weight_completeness = input("Completeness weight/importance OR unknown (ENTER): ")
+                        # Check that it is in right format:
+                        if weight_accuracy:
+                            weight_accuracy = float(weight_accuracy)
+                        else:
+                            weight_accuracy = 1.0
+                        if weight_validity:
+                            weight_validity = float(weight_validity)
+                        else:
+                            weight_validity = 1.0
+                        if weight_completeness:
+                            weight_completeness = float(weight_completeness)
+                        else:
+                            weight_completeness = 1.0
+                        break
+                    except ValueError:
+                        print("Invalid input. Please enter a valid float or integer.")
+                weights = [weight_accuracy,  weight_validity,  weight_completeness]
                 process_with_reference(input_file, reference_file)
                 # If output filename is given, use as output file name:
                 if args.output:
@@ -1091,6 +1051,23 @@ def main(argv = None):
                     quality_calculation(weights, reference=True)
             else:
                 print("Processing without reference ... ")
+                while True:
+                    try:
+                        weight_accuracy = input("Accuracy weight/importance OR unknown (ENTER): ")
+                        weight_validity = input("Validity weight/importance OR unknown (ENTER): ")
+                        # Check that it is in right format:
+                        if weight_accuracy:
+                            weight_accuracy = float(weight_accuracy)
+                        else:
+                            weight_accuracy = 1.0
+                        if weight_validity:
+                            weight_validity = float(weight_validity)
+                        else:
+                            weight_validity = 1.0
+                        break
+                    except ValueError:
+                        print("Invalid input. Please enter a valid float or integer.")
+                weights = [weight_accuracy,  weight_validity]
                 process_without_reference(input_file)
                 # If output filename is given, use as output file name:
                 if args.output:
@@ -1098,6 +1075,8 @@ def main(argv = None):
                     quality_calculation(weights, output = output_file)
                 else:
                     quality_calculation(weights)
+            if saving:
+                save_denoised(snapshotting = snapshotting, visualization = visualization)
         except Exception as e:
             print(str(e) + " Action dropped: processing clouds.  Use -h, --h or --help for more information.")
 
