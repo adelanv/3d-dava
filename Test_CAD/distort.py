@@ -86,6 +86,7 @@ def apply_downsampling(ref):
     Returns:
         downsampled_pcds (list) : list of distorted pcds
     '''
+    print("Apply downsampling...")
     ref_num_points = len(ref.points)
     # Define the downsampling percentages
     percentages = [0.1, 0.3, 0.5, 0.7, 0.9]
@@ -97,7 +98,7 @@ def apply_downsampling(ref):
         distorted_ref = ref.select_by_index(ind)
         # Visualize the downsampled point cloud
         downsampled_pcds.append(distorted_ref)
-        # visualize(distorted_ref)
+        visualize(distorted_ref)
     return downsampled_pcds
 
 
@@ -110,6 +111,7 @@ def apply_gaussian(ref):
     Returns:
         gaussian_pcds (list) : list of distorted pcds
     '''
+    print("Apply gaussian...")
     ref_num_points = len(ref.points)
     # Define the standard deviations for Gaussian noise
     std_devs = [0.001, 0.0025, 0.0055, 0.0075, 0.01]
@@ -124,7 +126,7 @@ def apply_gaussian(ref):
         noise = np.random.normal(0, target, size=(ref_num_points, 3))
         distorted_ref.points = o3d.utility.Vector3dVector(np.asarray(ref.points) + noise)
         gaussian_pcds.append(distorted_ref)
-        # visualize(distorted_ref)
+        visualize(distorted_ref)
     return gaussian_pcds
 
 
@@ -137,6 +139,7 @@ def apply_uniform_shift(ref):
     Returns:
         uniform_shift_pcds (list) : list of distorted pcds
     '''
+    print("Apply uniform shift...")
     ref_num_points = len(ref.points)
     # Define the random selection proportions:
     proportions = [0.1, 0.2, 0.3, 0.4, 0.5]
@@ -159,8 +162,8 @@ def apply_uniform_shift(ref):
         uniform_shift_pcds.append(pos_distorted_ref)
         uniform_shift_pcds.append(neg_distorted_ref)
         i += 1
-        # visualize(pos_distorted_ref)
-        # visualize(neg_distorted_ref)
+        visualize(pos_distorted_ref)
+        visualize(neg_distorted_ref)
     return uniform_shift_pcds
 
 def apply_local_missing(ref):
@@ -172,13 +175,14 @@ def apply_local_missing(ref):
     Returns:
         local_missing_pcds (list) : list of distorted pcds
     '''
+    print("Apply local missing...")
     ref_num_points = len(ref.points)
     # Calculate the bounding box size
     bounding_box = ref.get_axis_aligned_bounding_box()
     bbox_size = np.asarray(bounding_box.get_max_bound()) - np.asarray(bounding_box.get_min_bound())
     bbox_diag_length = np.linalg.norm(bbox_size)
     # Define the distortion levels and anchor sizes
-    anchor_size = 0.3 * bbox_diag_length
+    anchor_size = 0.2 * bbox_diag_length
     num_anchors_targets = [1,2,3,4,5]
     # Generate anchors based on the number of anchors per distortion level
     anchors = []
@@ -205,7 +209,7 @@ def apply_local_missing(ref):
                     indices_to_remove.append(index)
             distorted_ref.points = o3d.utility.Vector3dVector(np.delete(np.asarray(distorted_ref.points), indices_to_remove, axis=0))
         local_missing_pcds.append(distorted_ref)
-        # visualize(distorted_ref)
+        visualize(distorted_ref)
     return local_missing_pcds
 
 
@@ -218,6 +222,7 @@ def apply_reconstruction(ref, sampling_rate):
     Returns:
         reconstructed_pcds (list) : list of distorted pcds
     '''
+    print("Apply reconstruction...")
     depth_levels = [3,5,8]
     # Fetch downsampled pcds:
     downsampled_pcds = apply_downsampling(ref)
@@ -230,8 +235,47 @@ def apply_reconstruction(ref, sampling_rate):
             # Sample CAD, turning mesh into point cloud:
             ref_reconstructed = create_uniform_sampled_cloud_from_mesh(reconstructed, nr_points = sampling_rate, poisson = True, factor = 1)
             reconstructed_pcds.append(ref_reconstructed)
-            # visualize(ref_reconstructed)
+            visualize(ref_reconstructed)
     return reconstructed_pcds
+
+
+def apply_outlier_scattering(ref):
+    '''
+        Creating distorted clouds by adding outlier cubes.  Threat to validity. 
+    Args:
+        ref (str) : reference as point cloud
+
+    Returns:
+        outlier_pcds (list) : list of distorted pcds
+    '''
+    print("Apply outlier scattering...")
+    outlier_pcds = []
+     # Get the bounding box of the original point cloud
+    bbox = ref.get_axis_aligned_bounding_box()
+    # Get the dimensions of the bounding box
+    x_min, y_min, z_min = bbox.get_min_bound()
+    x_max, y_max, z_max = bbox.get_max_bound()
+    # Convert Open3D point cloud to numpy array
+    original_points = np.asarray(ref.points)
+    num_points = original_points.shape[0]
+    # Calculate the number of outliers based on scattering level
+    outlier_ratio = [0.0001, 0.0005, 0.001, 0.005, 0.01]
+    for out_ratio in outlier_ratio:
+        num_outliers = int(num_points * out_ratio)
+        # Generate random outlier points within the bounding box
+        outlier_points = np.random.uniform(
+            (x_min, y_min, z_min),
+            (x_max, y_max, z_max),
+            size=(num_outliers, 3)
+        )
+        # Combine original points and outlier points
+        new_points = np.vstack((original_points, outlier_points))
+        # Create a new Open3D point cloud with the new points
+        outlier_pcd = o3d.geometry.PointCloud()
+        outlier_pcd.points = o3d.utility.Vector3dVector(new_points)
+        outlier_pcds.append(outlier_pcd)
+        visualize(outlier_pcd)
+    return outlier_pcds
 
 def apply_compression(ref):
     '''
@@ -294,30 +338,41 @@ def distort(cad_path, output):
     print("Action in progress: applying distortions...")
     # ______________GEOMETRY DISTORTIONS______________
     # Down-sampling: we randomly downsample by removing 10%-30%-50%-70%-90% points from point cloud - Threat to completeness
-    downsampled_pcds = apply_downsampling(ref)
+    # downsampled_pcds = apply_downsampling(ref)
+    # Uniform geometry shifting: uniform geometry shifting is applied to geometry attributes of point cloud. Shifting is applied to 10-20-30-40-50% of randomly selected points, with shifting ranges of -/+ 0.5-1-2-3-4% respectively of bounding box. - Threat to accuracy
+    # uniform_pcds = apply_uniform_shift(ref)
+    # Poisson Reconstruction: Downsample point clouds, then reconstruct to mesh and sample to cloud again (adds outliers) - Threat to validity. 
+    # reconstructed_pcds = apply_reconstruction(ref, sampling_rate)
+    # ________TODO: Implement following________:
+    # Local offset: dislocate point cloud locally. Anchors used as before, but geometry attributes are increased by 5% of maximum side length of bounding box. - Threat to accuracy.
+    # local_offset_pcds = apply_local_offset(ref)
+    # Local rotation: local warp of clouds. Same anchor selection. Points are rotated 10-20-30-40-50 degrees along x-axis. - Threat to accuracy. 
+    # local_rotation_pcds = apply_rotation(ref)
+    # Octree Compression: achieved by octree compression at different levels: 8-10-14-18-20. - Threat to completeness.
+    # compressed_pcds = apply_compression(ref)
+
     # Gaussian geometry shifting: apply shift to each point randomly. All points superimposed with a zero-mena Gaussian geometry shift whose standard deviation is 0.001, 0.0025, 0.0055, 0.0075, 0.01 proportion of the bounding box. - Threat to accuracy
     gaussian_pcds = apply_gaussian(ref)
-    # Uniform geometry shifting: uniform geometry shifting is applied to geometry attributes of point cloud. Shifting is applied to 10-20-30-40-50% of randomly selected points, with shifting ranges of -/+ 0.5-1-2-3-4% respectively of bounding box. - Threat to accuracy
-    uniform_pcds = apply_uniform_shift(ref)
+    # Outlier scattering: scatter the cloud with outliers at five different levels. - Threat to validity.
+    outlier_pcds = apply_outlier_scattering(ref)
     # Local missing: we define a space anchor of 0.3% size of bounding box. Points in selected anchors are removed. - Threat to completeness.
     local_missing_pcds = apply_local_missing(ref)
-    # Poisson Reconstruction: Downsample point clouds, then reconstruct to mesh and sample to cloud again (adds outliers) - Threat to validity. 
-    reconstructed_pcds = apply_reconstruction(ref, sampling_rate)
-
-    # TODO: Implement following:
-    # Local offset: dislocate point cloud locally. Anchors used as before, but geometry attributes are increased by 5% of maximum side length of bounding box. - Threat to accuracy.
-    local_offset_pcds = apply_local_offset(ref)
-    # Local rotation: local warp of clouds. Same anchor selection. Points are rotated 10-20-30-40-50 degrees along x-axis. - Threat to accuracy. 
-    local_rotation_pcds = apply_rotation(ref)
-    # Octree Compression: achieved by octree compression at different levels: 8-10-14-18-20. - Threat to completeness.
-    compressed_pcds = apply_compression(ref)
-    # Outlier scattering: scatter the cloud with outliers at random places. - Threat to validity.
-    # outlier_pcds = apply_outlier_scattering(ref)
-
-
-    print(f"Action in progress: saving distorted clouds to {output} folder...")
-    ...
-
+    distortion_data = {}
+    distortion_data["Noise"] = gaussian_pcds
+    distortion_data["Outliers"] = outlier_pcds
+    distortion_data["Holes"] = local_missing_pcds
+    sys.exit()
+    print(f"Action in progress: saving distorted clouds to {output} folder, with subfolders belonging to each distortion...")
+    # Create the parent folder "pcds" if it doesn't exist
+    os.makedirs(output, exist_ok=True)
+    # Iterate through the distortion types and their corresponding point clouds
+    for distortion_type, point_clouds in distortion_data.items():
+        distortion_folder = os.path.join(output, distortion_type)
+        os.makedirs(distortion_folder, exist_ok=True)
+        for idx, point_cloud in enumerate(point_clouds):
+            point_cloud_path = os.path.join(distortion_folder, f"point_cloud_{idx}.pcd")
+            o3d.io.write_point_cloud(point_cloud_path, point_cloud)
+    print(f"Distortion process finished.")
 
 
 def main(argv = None):
@@ -327,18 +382,14 @@ def main(argv = None):
     '''
     # Top-level parser:
     parser = argparse.ArgumentParser(add_help=True)
-
     # No arguments:
     if argv is None:
         argv = sys.argv[1:]
         if not len(argv):
             parser.error('Insufficient arguments provided.')
-
     parser.add_argument("cad_path", help = "The reference file path (expected format: .stl)")
     parser.add_argument("-o", "--output",  help = "Filename of output folder containing distorted point clouds. No file extension needed.")
-
     args = parser.parse_args(argv)
-
     try:
         cad_path = args.cad_path
         if args.output:
