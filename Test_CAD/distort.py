@@ -166,7 +166,7 @@ def apply_uniform_shift(ref):
         visualize(neg_distorted_ref)
     return uniform_shift_pcds
 
-def apply_local_missing(ref):
+def apply_local_missing_old(ref):
     '''
         Creating distorted clouds by eliminating patches. We define a space anchor of 0.3% size of bounding box. Points in selected anchors are removed. Threat to completeness.
     Args:
@@ -209,6 +209,58 @@ def apply_local_missing(ref):
                     indices_to_remove.append(index)
             distorted_ref.points = o3d.utility.Vector3dVector(np.delete(np.asarray(distorted_ref.points), indices_to_remove, axis=0))
         local_missing_pcds.append(distorted_ref)
+        visualize(distorted_ref)
+    return local_missing_pcds
+
+
+def apply_local_missing(ref):
+    '''
+    Creating distorted clouds by eliminating patches. We define a space anchor of 0.3% size of bounding box. Points in selected anchors are removed. Threat to completeness.
+    Args:
+        ref (o3d.geometry.PointCloud) : reference as point cloud
+
+    Returns:
+        local_missing_pcds (list) : list of distorted pcds
+    '''
+    print("Apply local missing...")
+    ref_num_points = len(ref.points)
+    # Calculate the bounding box size
+    bounding_box = ref.get_axis_aligned_bounding_box()
+    bbox_size = np.asarray(bounding_box.get_max_bound()) - np.asarray(bounding_box.get_min_bound())
+    bbox_diag_length = np.linalg.norm(bbox_size)
+    # Define the distortion levels and anchor sizes
+    anchor_size = 0.2 * bbox_diag_length
+    num_anchors_targets = [1,3,5,9,12]
+    # Generate anchors based on the number of anchors per distortion level
+    anchors = []
+    for i in range(0, len(num_anchors_targets)):
+        num_anchors = num_anchors_targets[i]
+        level_anchors = []
+        for _ in range(num_anchors):
+            # Choose a random point index
+            random_point_index = np.random.randint(0, ref_num_points)
+            random_point = np.asarray(ref.points[random_point_index])
+            # Calculate anchor position
+            anchor = o3d.geometry.AxisAlignedBoundingBox()
+            anchor.min_bound = random_point - 0.5 * anchor_size
+            anchor.max_bound = random_point + 0.5 * anchor_size
+            level_anchors.append(anchor)
+        anchors.append(level_anchors)
+    # Apply local missing distortion:
+    local_missing_pcds = []
+    for anchor_list in anchors:
+        distorted_ref = copy.deepcopy(ref)
+        for anchor in anchor_list:
+            anchor_min = np.asarray(anchor.get_min_bound())
+            anchor_max = np.asarray(anchor.get_max_bound())
+            # Remove anchor bounded points:
+            indices_to_remove = []
+            for index, point in enumerate(distorted_ref.points):
+                if np.all(point >= anchor_min) and np.all(point <= anchor_max):
+                    indices_to_remove.append(index)
+            distorted_ref.points = o3d.utility.Vector3dVector(np.delete(np.asarray(distorted_ref.points), indices_to_remove, axis=0))
+        local_missing_pcds.append(distorted_ref)
+        # Commented out the visualize function since it's not provided in the code
         visualize(distorted_ref)
     return local_missing_pcds
 
