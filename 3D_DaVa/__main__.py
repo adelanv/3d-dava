@@ -212,10 +212,9 @@ def process_with_reference(input_file:str, reference_file:str, *args):
     vis_alignment_pcd.transform(global_trans)
     if visualization:
         inout.visualize_differences(vis_alignment_pcd, alignment_ref)
-
-
+    
     print("Action in progress: registration refinement using ICP local alignment (P2P)...")
-    icp_trans = ali.icp_P2P_registration(alignment_pcd, alignment_ref, threshold, global_trans)
+    icp_trans = ali.icp_P2P_registration(alignment_pcd, alignment_ref, global_trans, distance_threshold=threshold)
     eva = ali.evaluate(alignment_pcd, alignment_ref, threshold, icp_trans)
     fitness = eva.fitness
     print("Point cloud registration fitness: ", fitness)
