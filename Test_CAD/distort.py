@@ -126,7 +126,7 @@ def apply_gaussian(ref):
         noise = np.random.normal(0, target, size=(ref_num_points, 3))
         distorted_ref.points = o3d.utility.Vector3dVector(np.asarray(ref.points) + noise)
         gaussian_pcds.append(distorted_ref)
-        visualize(distorted_ref)
+        # visualize(distorted_ref)
     return gaussian_pcds
 
 
@@ -183,7 +183,7 @@ def apply_local_missing(ref):
     bbox_diag_length = np.linalg.norm(bbox_size)
     # Define the distortion levels and anchor sizes
     anchor_size = 0.2 * bbox_diag_length
-    num_anchors_targets = [1,2,3,4,5]
+    num_anchors_targets = [3,6,9,12,15]
     # Generate anchors based on the number of anchors per distortion level
     anchors = []
     for i in range(0, len(num_anchors_targets)):
@@ -274,7 +274,7 @@ def apply_outlier_scattering(ref):
         outlier_pcd = o3d.geometry.PointCloud()
         outlier_pcd.points = o3d.utility.Vector3dVector(new_points)
         outlier_pcds.append(outlier_pcd)
-        visualize(outlier_pcd)
+        # visualize(outlier_pcd)
     return outlier_pcds
 
 def apply_compression(ref):
@@ -361,7 +361,6 @@ def distort(cad_path, output):
     distortion_data["Noise"] = gaussian_pcds
     distortion_data["Outliers"] = outlier_pcds
     distortion_data["Holes"] = local_missing_pcds
-    sys.exit()
     print(f"Action in progress: saving distorted clouds to {output} folder, with subfolders belonging to each distortion...")
     # Create the parent folder "pcds" if it doesn't exist
     os.makedirs(output, exist_ok=True)
