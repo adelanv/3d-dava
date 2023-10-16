@@ -25,9 +25,15 @@ def map_to_probabilities(values, inverse = True):
     min_value = min(values)
     max_value = max(values)
     if inverse:
-        mapped_probs = [1.0 - ((value - min_value)/(max_value - min_value)) for value in values]
+        if (max_value - min_value) == 0:
+            mapped_probs = [1.0 for value in values]
+        else:
+            mapped_probs = [1.0 - ((value - min_value)/(max_value - min_value)) for value in values]
     else:
-        mapped_probs = [((value - min_value)/(max_value - min_value)) for value in values]
+        if (max_value - min_value) == 0:
+            mapped_probs = [0.0 for value in values]
+        else:
+            mapped_probs = [((value - min_value)/(max_value - min_value)) for value in values]
     return mapped_probs
 
 def generate_N_unique_colors(N):
@@ -71,7 +77,6 @@ def sigmoid(x):
         y (float) : x mapped to [0,1]
     '''
     return 1 / (1 + np.exp(-x))
-
 
 
 def point_to_mesh(pcd, voxel_size):

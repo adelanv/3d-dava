@@ -1,6 +1,6 @@
 <h1> 3D-DaVa Package </h1>
 
-3D-DaVa is a Python-based package that offers point cloud (3D) data validation for digitized products, allowing no-reference and full-reference point cloud quality assessments. Compared to other quality assessment tools, which often output use-case specific metrics, 3D-DaVa can offer a more user-friendly and natural explanation to justify the quality scores found for a given digitized cloud. It has also a few other functionalities, such as stitching point clouds together and denoising point clouds. The pipeline allows customization of metrics and user-defined thresholds that weigh particular properties of the point clouds and give them less/more importance in the overall assessment.
+3D-DaVa is a Python-based package that offers point cloud (3D) data validation for an array of industrial products, allowing no-reference and full-reference point cloud quality assessments. Compared to other quality assessment tools, which often output use-case specific metrics, 3D-DaVa can offer a more general approach, covering three data quality dimensions. Accuracy quantifies the presence of noise. Validity quantifies the presence of outliers. Completeness quantifies the absence of expected values. 3D-DaVa provides a couple other functionalities, such as stitching point clouds together and denoising point clouds. A non-automatic setting of the pipeline allows user involvement, not only by applying a weighing scheme to highlight desired properties, but also to refine the assessment process.
 
 Implementation backbone: Open3D
 
@@ -31,15 +31,15 @@ Alternative 2. Create a new environment by entering:
 
 In the new environment, manually install the following packages: open3d, matplotlib, scikit-learn, scipy, pandas.
 
-4. Verify environment creation by entering (and checking if 3d-dava is listed):
+4. Verify environment creation by entering the line below. 3d-dava should be listed:
 
     conda env list
 
 5. Activate environment by entering:
 
-    conda activate 3ddava
+    conda activate 3d-dava
 
-6. While the ProjectClouds directory, run the following script to install 3D-DaVa package:
+6. Whilst in the ProjectClouds directory, run the following to install 3D-DaVa package:
 
     python3 -m pip install .
 
@@ -70,9 +70,13 @@ Arguments:
 
 **-o OUTPUT, –output OUTPUT**: (Optional) filename of metric-filled output file. No file extension needed (automatically turned to .json)
 
-<h3> Full Reference Data Validation </h3>
+**-save, –-save**: (Optional) allow saving the denoised point cloud as a (.pcd file) on current path. (Obs: TODO)
 
-Data validation using both the no-reference metrics of the digitized point cloud and metrics resulting from the alignment with a reference model. Returns a .json file containing the quality scores based on these.
+**-auto, –-automatic**: (Optional) runs the pipeline without user intervenstion.
+
+<h3> Reference-based Data Validation </h3>
+
+Data validation using both the no-reference and the reference-based assessment of the digitized point cloud and metrics resulting from the alignment with a reference model. Returns a .json file containing the quality scores based on these.
 
     python -m 3D_DaVa processing [-h]  [-o OUTPUT] cloud_file -r REFERENCE
 
@@ -89,6 +93,11 @@ Arguments:
 **-r REFERENCE**, –reference REFERENCE: reference file (recommended format: .stl, see notes)
 
 **-o OUTPUT, –output OUTPUT**: (Optional) filename of metric-filled output file. No file extension needed (automatically turned to .json)
+
+**-save, –-save**: (Optional) allow saving the denoised point cloud as a (.pcd file) on current path. (Obs: TODO)
+
+**-auto, –-automatic**: (Optional) runs the pipeline without user intervenstion.
+
 
 <h3> Stitching </h3>
 

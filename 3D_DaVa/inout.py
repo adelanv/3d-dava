@@ -123,10 +123,12 @@ def visualize_differences(*args, rotate = False, VERTICAL_ROT = -0.5, HORIZONTAL
         red = [1,0,0]
         blue = [0,0,1]
         green = [0,0.5,0]
+        orange = [1, 0.5, 0]
+        ocean_blue = [0, 0.5, 1]
         args[0] = copy.deepcopy(args[0])
-        args[0].paint_uniform_color(green)
+        args[0].paint_uniform_color(orange)
         args[1] = copy.deepcopy(args[1])
-        args[1].paint_uniform_color(red)
+        args[1].paint_uniform_color(ocean_blue)
     else:
         for i in range(len(args)):
             args[i] = copy.deepcopy(args[i])
