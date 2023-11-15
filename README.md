@@ -70,7 +70,7 @@ Arguments:
 
 **-o OUTPUT, –output OUTPUT**: (Optional) filename of metric-filled output file. No file extension needed (automatically turned to .json)
 
-**-save, –-save**: (Optional) allow saving the denoised point cloud as a (.pcd file) on current path. (Obs: TODO)
+**-save, –-save**: (Optional) allow saving the clean (no outliers/noise) point cloud as a (.pcd file) on current path. 
 
 **-auto, –-automatic**: (Optional) runs the pipeline without user intervenstion.
 
