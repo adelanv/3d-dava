@@ -100,12 +100,16 @@ Arguments:
 
 <h3> Datasets and Distortion Simulation </h3>
  
-For experimental or evaluation purposes, one may create simulated datasets from reference files. In our experiments we have used reference models obtained from https://www.dimelab.org/fabwave. This is a repository over 3D Product model data. Another method that has been used in our experiments is creating our own reference models. To this purpose, we have used the create_simple_geometries.py file in the Test_CAD folder, which creates simple geometries (cube, cylinder and sphere) that can be used as reference models in the distortion simulation process. To create these files, make sure to have environment above active and simply run the following in the terminal:
+For experimental or evaluation purposes, one may create simulated datasets from reference files. In our experiments we have used reference models obtained from https://www.dimelab.org/fabwave. This is a repository over 3D Product model data.
 
-    python create_simple_geomtries.py
+Another method that has been used in our experiments is creating our own reference models. To this purpose, we have used the create_simple_geometries.py file in the Test_CAD folder, which creates simple geometries (cube, cylinder and sphere) that can be used as reference models in the distortion simulation process. To create these files, make sure to have environment above active and simply run the following in the terminal:
+
+    python create_simple_geometries.py
 
 To simulate distortions onto the reference files, we add all of the relevant .stl files (i.e reference models) inside the Test_CAD folder, and run the distortion simulation file (called distort.py) by simply running the following line in the terminal, after activating the environment above:
 
     python distort.py 
+
+Note that the distortion solution process is stochastic.  
 
 Note that our experiments have also included company data, however we are not able to share these due to confidentiality reasons. 
